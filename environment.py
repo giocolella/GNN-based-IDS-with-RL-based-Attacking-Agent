@@ -5,7 +5,7 @@ class NetworkEnvironment:
     def __init__(self, gnn_model):
         self.gnn_model = gnn_model
         self.state_size = 13  # Example state size (node feature size)
-        self.action_size = 5  # Example actions
+        self.action_size = 13 # Example actions
         self.current_state = self.reset()
 
         # Attributes for storing traffic data and labels
@@ -71,7 +71,7 @@ class NetworkEnvironment:
         # Combine original features with augmented features
         return np.concatenate([features, [packet_size, protocol_type, temporal_pattern]])
 
-    def generate_traffic(self, action):
+    def generate_traffic_old(self, action):
         """
         Generate realistic network traffic features based on the chosen action.
 
@@ -172,6 +172,387 @@ class NetworkEnvironment:
         traffic_features = (traffic_features - traffic_features.mean()) / (traffic_features.std() + 1e-8)
 
         return traffic_features
+
+    def generate_traffic_old_new(self, action):
+        """
+        Generate realistic network traffic features based on the chosen action.
+
+        Args:
+            action (int): Represents the type of traffic (0 for normal, 1-8 for malicious).
+
+        Returns:
+            np.ndarray: A feature vector representing a single traffic instance.
+        """
+        if action == 0:  # Normal traffic
+            features = {
+                "flow_duration": np.random.uniform(50, 5000),  # Flow duration in ms
+                "packet_size_mean": np.random.uniform(60, 1200),  # Mean packet size (bytes)
+                "packet_size_std": np.random.uniform(10, 300),  # Std dev of packet sizes
+                "flow_bytes_sent": np.random.uniform(1000, 100000),  # Total bytes sent
+                "flow_bytes_received": np.random.uniform(500, 80000),  # Total bytes received
+                "flow_packet_rate": np.random.uniform(10, 100),  # Packets per second
+                "protocol": np.random.choice([0, 1, 2]),  # TCP, UDP, ICMP
+                "flags": np.random.choice([0, 1]),  # SYN/ACK flags
+                "ttl": np.random.uniform(30, 128),  # Time-to-live
+                "header_length": np.random.uniform(20, 60),  # Header length
+                "payload_length": np.random.uniform(0, 1500),  # Payload size
+                "is_encrypted": np.random.choice([0, 1]),  # Encrypted traffic
+                "connection_state": np.random.choice([0, 1, 2]),  # Established=0, Reset=1, etc.
+            }
+        elif action == 1:  # Flood attack
+            features = {
+                "flow_duration": np.random.uniform(1, 50),
+                "packet_size_mean": np.random.uniform(800, 1500),
+                "packet_size_std": np.random.uniform(0, 50),
+                "flow_bytes_sent": np.random.uniform(50000, 500000),
+                "flow_bytes_received": np.random.uniform(1000, 5000),
+                "flow_packet_rate": np.random.uniform(500, 2000),
+                "protocol": 1,  # UDP
+                "flags": 0,
+                "ttl": np.random.uniform(10, 30),
+                "header_length": np.random.uniform(20, 60),
+                "payload_length": np.random.uniform(1000, 1500),
+                "is_encrypted": 0,
+                "connection_state": 1,  # Reset
+            }
+        elif action == 2:  # DoS Hulk attack
+            features = {
+                "flow_duration": np.random.uniform(1, 200),  # Short durations due to rapid requests
+                "packet_size_mean": np.random.uniform(50, 500),  # Smaller packet sizes
+                "packet_size_std": np.random.uniform(20, 100),  # Moderate variance in packet size
+                "flow_bytes_sent": np.random.uniform(5000, 200000),  # High volume of sent bytes
+                "flow_bytes_received": np.random.uniform(1000, 5000),  # Limited received bytes
+                "flow_packet_rate": np.random.uniform(1000, 10000),  # Extremely high packet rates
+                "protocol": 0,  # TCP
+                "flags": 1,  # SYN/ACK flood
+                "ttl": np.random.uniform(10, 50),  # Shorter TTL for local targeting
+                "header_length": np.random.uniform(20, 40),
+                "payload_length": np.random.uniform(200, 1000),
+                "is_encrypted": 0,
+                "connection_state": 1,  # Reset states
+            }
+        elif action == 3:  # Malformed packets
+            features = {
+                "flow_duration": np.random.uniform(1, 100),
+                "packet_size_mean": np.random.uniform(1, 50),
+                "packet_size_std": np.random.uniform(0, 10),
+                "flow_bytes_sent": np.random.uniform(100, 5000),
+                "flow_bytes_received": np.random.uniform(50, 3000),
+                "flow_packet_rate": np.random.uniform(10, 100),
+                "protocol": 2,  # ICMP
+                "flags": 1,
+                "ttl": np.random.uniform(1, 20),
+                "header_length": np.random.uniform(20, 40),
+                "payload_length": np.random.uniform(0, 500),
+                "is_encrypted": 0,
+                "connection_state": 2,
+            }
+        elif action == 4:  # Timing anomalies
+            features = {
+                "flow_duration": np.random.uniform(500, 5000),
+                "packet_size_mean": np.random.uniform(50, 500),
+                "packet_size_std": np.random.uniform(10, 50),
+                "flow_bytes_sent": np.random.uniform(1000, 80000),
+                "flow_bytes_received": np.random.uniform(500, 60000),
+                "flow_packet_rate": np.random.uniform(0.1, 10),
+                "protocol": np.random.choice([0, 1]),
+                "flags": np.random.choice([0, 1]),
+                "ttl": np.random.uniform(20, 100),
+                "header_length": np.random.uniform(20, 60),
+                "payload_length": np.random.uniform(0, 1000),
+                "is_encrypted": 1,
+                "connection_state": 0,
+            }
+        elif action == 5:  # Protocol anomalies
+            features = {
+                "flow_duration": np.random.uniform(100, 1000),
+                "packet_size_mean": np.random.uniform(50, 1200),
+                "packet_size_std": np.random.uniform(20, 400),
+                "flow_bytes_sent": np.random.uniform(5000, 200000),
+                "flow_bytes_received": np.random.uniform(2000, 100000),
+                "flow_packet_rate": np.random.uniform(50, 500),
+                "protocol": np.random.choice([3, 4, 5]),  # Anomalous protocols
+                "flags": 1,
+                "ttl": np.random.uniform(1, 20),
+                "header_length": np.random.uniform(20, 60),
+                "payload_length": np.random.uniform(0, 1500),
+                "is_encrypted": 0,
+                "connection_state": 1,
+            }
+        elif action == 6:  # Bot attack
+            features = {
+                "flow_duration": np.random.uniform(100, 2000),  # Durata moderata del flusso
+                "packet_size_mean": np.random.uniform(50, 800),  # Pacchetti di dimensione media
+                "packet_size_std": np.random.uniform(10, 300),  # Variazione moderata
+                "flow_bytes_sent": np.random.uniform(1000, 150000),  # Traffico moderato o elevato
+                "flow_bytes_received": np.random.uniform(500, 100000),  # Bytes ricevuti variabili
+                "flow_packet_rate": np.random.uniform(50, 1000),
+                # Tasso di pacchetti più basso rispetto agli attacchi DoS
+                "protocol": np.random.choice([0, 1]),  # TCP o UDP
+                "flags": np.random.choice([0, 1]),  # Bandiera SYN/ACK
+                "ttl": np.random.uniform(30, 100),  # TTL variabile
+                "header_length": np.random.uniform(20, 60),  # Lunghezza dell'header
+                "payload_length": np.random.uniform(0, 1500),  # Lunghezza del payload variabile
+                "is_encrypted": np.random.choice([0, 1]),  # Crittografia randomica
+                "connection_state": np.random.choice([0, 1, 2]),  # Stati della connessione variabili
+            }
+        elif action == 7:  # Brute Force - Web attack
+            features = {
+                "flow_duration": np.random.uniform(100, 500),  # Durata del flusso moderata
+                "packet_size_mean": np.random.uniform(400, 1000),  # Dimensioni dei pacchetti
+                "packet_size_std": np.random.uniform(50, 200),  # Variabilità
+                "flow_bytes_sent": np.random.uniform(10000, 300000),  # Byte inviati elevati
+                "flow_bytes_received": np.random.uniform(5000, 200000),  # Byte ricevuti
+                "flow_packet_rate": np.random.uniform(100, 1000),  # Tasso di pacchetti
+                "protocol": np.random.choice([0, 1]),  # TCP o UDP
+                "flags": 1,  # Flag utilizzati
+                "ttl": np.random.uniform(20, 128),  # Time-to-live
+                "header_length": np.random.uniform(20, 60),  # Lunghezza header
+                "payload_length": np.random.uniform(100, 1200),  # Lunghezza del payload
+                "is_encrypted": 0,  # Non crittografato
+                "connection_state": 2,  # Stato di connessione
+            }
+        elif action == 8:  # Brute Force - XSS attack
+            features = {
+                "flow_duration": np.random.uniform(150, 600),  # Durata moderata del flusso
+                "packet_size_mean": np.random.uniform(500, 1500),  # Dimensioni dei pacchetti maggiori
+                "packet_size_std": np.random.uniform(50, 300),  # Variabilità elevata
+                "flow_bytes_sent": np.random.uniform(20000, 500000),  # Elevati byte inviati
+                "flow_bytes_received": np.random.uniform(10000, 400000),  # Elevati byte ricevuti
+                "flow_packet_rate": np.random.uniform(150, 1200),  # Tasso di pacchetti elevato
+                "protocol": np.random.choice([0, 1]),  # TCP o UDP
+                "flags": 1,  # Flag utilizzati
+                "ttl": np.random.uniform(30, 128),  # Time-to-live variabile
+                "header_length": np.random.uniform(20, 60),  # Lunghezza dell'header
+                "payload_length": np.random.uniform(200, 1500),  # Lunghezza del payload
+                "is_encrypted": 0,  # Non crittografato
+                "connection_state": 2,  # Stato della connessione
+            }
+
+        return np.array(list(features.values()))
+
+    def generate_traffic(self, action):
+        """
+        Generate realistic network traffic features based on the chosen action.
+
+        Args:
+            action (int): Represents the type of traffic (0 for normal, 1-12 for malicious).
+
+        Returns:
+            np.ndarray: A feature vector representing a single traffic instance.
+        """
+        if action == 0:  # Normal traffic
+            features = {
+                "flow_duration": np.random.uniform(50, 5000),  # Flow duration in ms
+                "packet_size_mean": np.random.uniform(60, 1200),  # Mean packet size (bytes)
+                "packet_size_std": np.random.uniform(10, 300),  # Std dev of packet sizes
+                "flow_bytes_sent": np.random.uniform(1000, 100000),  # Total bytes sent
+                "flow_bytes_received": np.random.uniform(500, 80000),  # Total bytes received
+                "flow_packet_rate": np.random.uniform(10, 100),  # Packets per second
+                "protocol": np.random.choice([0, 1, 2]),  # TCP, UDP, ICMP
+                "flags": np.random.choice([0, 1]),  # SYN/ACK flags
+                "ttl": np.random.uniform(30, 128),  # Time-to-live
+                "header_length": np.random.uniform(20, 60),  # Header length
+                "payload_length": np.random.uniform(0, 1500),  # Payload size
+                "is_encrypted": np.random.choice([0, 1]),  # Encrypted traffic
+                "connection_state": np.random.choice([0, 1, 2]),  # Established=0, Reset=1, etc.
+            }
+        elif action == 1:  # Flood attack
+            features = {
+                "flow_duration": np.random.uniform(1, 50),
+                "packet_size_mean": np.random.uniform(800, 1500),
+                "packet_size_std": np.random.uniform(0, 50),
+                "flow_bytes_sent": np.random.uniform(50000, 500000),
+                "flow_bytes_received": np.random.uniform(1000, 5000),
+                "flow_packet_rate": np.random.uniform(500, 2000),
+                "protocol": 1,  # UDP
+                "flags": 0,
+                "ttl": np.random.uniform(10, 30),
+                "header_length": np.random.uniform(20, 60),
+                "payload_length": np.random.uniform(1000, 1500),
+                "is_encrypted": 0,
+                "connection_state": 1,  # Reset
+            }
+        elif action == 2:  # DoS Hulk attack
+            features = {
+                "flow_duration": np.random.uniform(1, 200),  # Short durations due to rapid requests
+                "packet_size_mean": np.random.uniform(50, 500),  # Smaller packet sizes
+                "packet_size_std": np.random.uniform(20, 100),  # Moderate variance in packet size
+                "flow_bytes_sent": np.random.uniform(5000, 200000),  # High volume of sent bytes
+                "flow_bytes_received": np.random.uniform(1000, 5000),  # Limited received bytes
+                "flow_packet_rate": np.random.uniform(1000, 10000),  # Extremely high packet rates
+                "protocol": 0,  # TCP
+                "flags": 1,  # SYN/ACK flood
+                "ttl": np.random.uniform(10, 50),  # Shorter TTL for local targeting
+                "header_length": np.random.uniform(20, 40),
+                "payload_length": np.random.uniform(200, 1000),
+                "is_encrypted": 0,
+                "connection_state": 1,  # Reset states
+            }
+        elif action == 3:  # Malformed packets
+            features = {
+                "flow_duration": np.random.uniform(1, 100),
+                "packet_size_mean": np.random.uniform(1, 50),
+                "packet_size_std": np.random.uniform(0, 10),
+                "flow_bytes_sent": np.random.uniform(100, 5000),
+                "flow_bytes_received": np.random.uniform(50, 3000),
+                "flow_packet_rate": np.random.uniform(10, 100),
+                "protocol": 2,  # ICMP
+                "flags": 1,
+                "ttl": np.random.uniform(1, 20),
+                "header_length": np.random.uniform(20, 40),
+                "payload_length": np.random.uniform(0, 500),
+                "is_encrypted": 0,
+                "connection_state": 2,
+            }
+        elif action == 4:  # Timing anomalies
+            features = {
+                "flow_duration": np.random.uniform(500, 5000),
+                "packet_size_mean": np.random.uniform(50, 500),
+                "packet_size_std": np.random.uniform(10, 50),
+                "flow_bytes_sent": np.random.uniform(1000, 80000),
+                "flow_bytes_received": np.random.uniform(500, 60000),
+                "flow_packet_rate": np.random.uniform(0.1, 10),
+                "protocol": np.random.choice([0, 1]),
+                "flags": np.random.choice([0, 1]),
+                "ttl": np.random.uniform(20, 100),
+                "header_length": np.random.uniform(20, 60),
+                "payload_length": np.random.uniform(0, 1000),
+                "is_encrypted": 1,
+                "connection_state": 0,
+            }
+        elif action == 5:  # Protocol anomalies
+            features = {
+                "flow_duration": np.random.uniform(100, 1000),
+                "packet_size_mean": np.random.uniform(50, 1200),
+                "packet_size_std": np.random.uniform(20, 400),
+                "flow_bytes_sent": np.random.uniform(5000, 200000),
+                "flow_bytes_received": np.random.uniform(2000, 100000),
+                "flow_packet_rate": np.random.uniform(50, 500),
+                "protocol": np.random.choice([3, 4, 5]),  # Anomalous protocols
+                "flags": 1,
+                "ttl": np.random.uniform(1, 20),
+                "header_length": np.random.uniform(20, 60),
+                "payload_length": np.random.uniform(0, 1500),
+                "is_encrypted": 0,
+                "connection_state": 1,
+            }
+        elif action == 6:  # Bot attack
+            features = {
+                "flow_duration": np.random.uniform(100, 2000),  # Durata moderata del flusso
+                "packet_size_mean": np.random.uniform(50, 800),  # Pacchetti di dimensione media
+                "packet_size_std": np.random.uniform(10, 300),  # Variazione moderata
+                "flow_bytes_sent": np.random.uniform(1000, 150000),  # Traffico moderato o elevato
+                "flow_bytes_received": np.random.uniform(500, 100000),  # Bytes ricevuti variabili
+                "flow_packet_rate": np.random.uniform(50, 1000),
+                # Tasso di pacchetti più basso rispetto agli attacchi DoS
+                "protocol": np.random.choice([0, 1]),  # TCP o UDP
+                "flags": np.random.choice([0, 1]),  # Bandiera SYN/ACK
+                "ttl": np.random.uniform(30, 100),  # TTL variabile
+                "header_length": np.random.uniform(20, 60),  # Lunghezza dell'header
+                "payload_length": np.random.uniform(0, 1500),  # Lunghezza del payload variabile
+                "is_encrypted": np.random.choice([0, 1]),  # Crittografia randomica
+                "connection_state": np.random.choice([0, 1, 2]),  # Stati della connessione variabili
+            }
+        elif action == 7:  # Brute Force - Web attack
+            features = {
+                "flow_duration": np.random.uniform(100, 500),  # Durata del flusso moderata
+                "packet_size_mean": np.random.uniform(400, 1000),  # Dimensioni dei pacchetti
+                "packet_size_std": np.random.uniform(50, 200),  # Variabilità
+                "flow_bytes_sent": np.random.uniform(10000, 300000),  # Byte inviati elevati
+                "flow_bytes_received": np.random.uniform(5000, 200000),  # Byte ricevuti
+                "flow_packet_rate": np.random.uniform(100, 1000),  # Tasso di pacchetti
+                "protocol": np.random.choice([0, 1]),  # TCP o UDP
+                "flags": 1,  # Flag utilizzati
+                "ttl": np.random.uniform(20, 128),  # Time-to-live
+                "header_length": np.random.uniform(20, 60),  # Lunghezza header
+                "payload_length": np.random.uniform(100, 1200),  # Lunghezza del payload
+                "is_encrypted": 0,  # Non crittografato
+                "connection_state": 2,  # Stato di connessione
+            }
+        elif action == 8:  # Brute Force - XSS attack
+            features = {
+                "flow_duration": np.random.uniform(150, 600),  # Durata moderata del flusso
+                "packet_size_mean": np.random.uniform(500, 1500),  # Dimensioni dei pacchetti maggiori
+                "packet_size_std": np.random.uniform(50, 300),  # Variabilità elevata
+                "flow_bytes_sent": np.random.uniform(20000, 500000),  # Elevati byte inviati
+                "flow_bytes_received": np.random.uniform(10000, 400000),  # Elevati byte ricevuti
+                "flow_packet_rate": np.random.uniform(150, 1200),  # Tasso di pacchetti elevato
+                "protocol": np.random.choice([0, 1]),  # TCP o UDP
+                "flags": 1,  # Flag utilizzati
+                "ttl": np.random.uniform(30, 128),  # Time-to-live variabile
+                "header_length": np.random.uniform(20, 60),  # Lunghezza dell'header
+                "payload_length": np.random.uniform(200, 1500),  # Lunghezza del payload
+                "is_encrypted": 0,  # Non crittografato
+                "connection_state": 2,  # Stato della connessione
+            }
+        elif action == 9:  # Infiltration attack
+            features = {
+                "flow_duration": np.random.uniform(300, 2000),  # Durata del flusso moderata
+                "packet_size_mean": np.random.uniform(50, 700),  # Dimensioni dei pacchetti medie
+                "packet_size_std": np.random.uniform(10, 200),  # Variabilità moderata
+                "flow_bytes_sent": np.random.uniform(1000, 50000),  # Bytes inviati
+                "flow_bytes_received": np.random.uniform(500, 30000),  # Bytes ricevuti
+                "flow_packet_rate": np.random.uniform(10, 500),  # Tasso di pacchetti moderato
+                "protocol": np.random.choice([0, 1, 2]),  # TCP, UDP, ICMP
+                "flags": np.random.choice([0, 1]),  # Bandiera SYN/ACK
+                "ttl": np.random.uniform(50, 128),  # TTL elevato
+                "header_length": np.random.uniform(20, 60),  # Lunghezza dell'header
+                "payload_length": np.random.uniform(100, 800),  # Payload moderato
+                "is_encrypted": np.random.choice([0, 1]),  # Crittografia variabile
+                "connection_state": np.random.choice([0, 1, 2]),  # Stato variabile della connessione
+            }
+        elif action == 10:  # SQL Injection attack
+            features = {
+                "flow_duration": np.random.uniform(500, 3000),  # Moderate to long duration flows
+                "packet_size_mean": np.random.uniform(300, 1200),
+                # Larger packet sizes typical for data-heavy operations
+                "packet_size_std": np.random.uniform(50, 400),  # Variability in size due to database responses
+                "flow_bytes_sent": np.random.uniform(5000, 200000),  # High byte volume for queries and responses
+                "flow_bytes_received": np.random.uniform(1000, 100000),  # Data retrieval in responses
+                "flow_packet_rate": np.random.uniform(50, 600),  # Moderate packet rate
+                "protocol": 0,  # TCP protocol typical for SQL traffic
+                "flags": 1,  # SYN/ACK flags
+                "ttl": np.random.uniform(30, 128),  # Normal TTL range
+                "header_length": np.random.uniform(20, 60),  # Header length for TCP/IP
+                "payload_length": np.random.uniform(500, 1500),  # Payload size varies with query responses
+                "is_encrypted": np.random.choice([0, 1]),  # May or may not be encrypted
+                "connection_state": np.random.choice([0, 1, 2]),  # Established, Reset, or Others
+            }
+        elif action == 11:  # SSH BruteForce attack
+            features = {
+                "flow_duration": np.random.uniform(200, 1500),  # Short to moderate duration
+                "packet_size_mean": np.random.uniform(500, 1500),  # Larger packet sizes for login attempts
+                "packet_size_std": np.random.uniform(50, 300),  # Variability in size due to retries and responses
+                "flow_bytes_sent": np.random.uniform(10000, 500000),  # High byte volume for repeated attempts
+                "flow_bytes_received": np.random.uniform(5000, 400000),  # Responses from server
+                "flow_packet_rate": np.random.uniform(100, 800),  # High packet rate due to rapid retries
+                "protocol": 0,  # TCP protocol typical for SSH
+                "flags": 1,  # SYN/ACK flags for connection attempts
+                "ttl": np.random.uniform(20, 128),  # Normal TTL range
+                "header_length": np.random.uniform(20, 60),  # Header length for TCP/IP
+                "payload_length": np.random.uniform(200, 1500),  # Payload size varies with retries
+                "is_encrypted": 1,  # SSH is encrypted
+                "connection_state": np.random.choice([0, 1, 2]),  # Established, Reset, or Others
+            }
+        elif action == 12:  # DoS SlowHTTP attack
+            features = {
+                "flow_duration": np.random.uniform(1000, 10000),  # Long-lasting connections
+                "packet_size_mean": np.random.uniform(100, 500),  # Small packet sizes
+                "packet_size_std": np.random.uniform(5, 50),  # Low variability in packet sizes
+                "flow_bytes_sent": np.random.uniform(500, 5000),  # Low volume of bytes sent
+                "flow_bytes_received": np.random.uniform(100, 1000),  # Minimal responses
+                "flow_packet_rate": np.random.uniform(0.1, 10),  # Very low packet rate
+                "protocol": 0,  # TCP
+                "flags": 1,  # SYN flag for holding connections
+                "ttl": np.random.uniform(30, 128),  # Normal TTL
+                "header_length": np.random.uniform(20, 60),  # Standard header length
+                "payload_length": np.random.uniform(0, 500),  # Minimal payloads
+                "is_encrypted": 0,  # Not encrypted
+                "connection_state": 2,  # Idle or half-open connections
+            }
+
+        return np.array(list(features.values()))
 
     def get_edge_index_old(self):
         """
