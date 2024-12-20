@@ -7,33 +7,53 @@ from torch_geometric.data import Data
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
+from sklearn.metrics.pairwise import cosine_similarity
 
 class GCNIDS(nn.Module):
-    """
-    A Graph Convolutional Network (GCN) for Intrusion Detection.
-    Processes graph-structured data where nodes represent traffic instances and edges capture relationships.
-    """
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, use_dropout=False, dropout_rate=0.5):
         super(GCNIDS, self).__init__()
-        # Define GCN layers
-        self.conv1 = GCNConv(input_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, output_dim)
+        self.use_dropout = use_dropout
+
+        # GCN Layers
+        self.conv1 = nn.Linear(input_dim, hidden_dim)
+        self.conv2 = nn.Linear(hidden_dim, output_dim)
+
+        # Output layer for binary classification
+        self.output_layer = nn.Linear(output_dim, 1)  # Single logit for binary classification
+
+        # Dropout Layer
+        if self.use_dropout:
+            self.dropout = nn.Dropout(p=dropout_rate)
+
+        # Batch Normalization
+        self.batch_norm1 = nn.BatchNorm1d(hidden_dim)
 
     def forward(self, x, edge_index):
         """
-        Forward pass for the GCN.
-
+        Forward pass for the GNN.
         Args:
-            x: Node feature matrix (num_nodes x input_dim)
-            edge_index: Edge index (2 x num_edges)
-
-        Returns:
-            Output predictions for each node (num_nodes x 1).
+            x: Node features (num_nodes x num_features).
+            edge_index: Edge list in COO format (2 x num_edges).
         """
-        x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = self.conv2(x, edge_index)
-        return torch.sigmoid(x)
+        # Create adjacency matrix from edge_index
+        num_nodes = x.size(0)
+        adjacency_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32, device=x.device)
+        adjacency_matrix[edge_index[0], edge_index[1]] = 1  # Set edges to 1
+
+        # Graph convolution
+        x = torch.mm(adjacency_matrix, x)  # First layer
+        x = F.relu(self.conv1(x))
+        if self.use_dropout:
+            x = self.dropout(x)
+        x = self.batch_norm1(x)
+
+        x = torch.mm(adjacency_matrix, x)  # Second layer
+        x = F.relu(self.conv2(x))
+
+        # Apply the output layer for binary classification
+        x = self.output_layer(x)
+        return x
+
 
 
 def preprocess_data(traffic_data, labels):
@@ -67,187 +87,254 @@ def preprocess_data(traffic_data, labels):
     graph_data = Data(x=x, edge_index=edge_index, y=y)
     return graph_data
 
-def retrain_old(gnn_model, traffic_data, labels, epochs=5, batch_size=32):
+# Debugging Helper for Overfitting
+def debug_overfitting(train_losses, val_losses):
     """
-    Retrains the GCNIDS on new graph-structured traffic data.
+    Plot training and validation loss curves to debug overfitting.
+
+    Args:
+        train_losses (list): List of training losses over epochs.
+        val_losses (list): List of validation losses over epochs.
     """
+    import matplotlib.pyplot as plt
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(train_losses, label="Training Loss")
+    plt.plot(val_losses, label="Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.title("Loss Curves")
+    plt.show()
+
+def retrainBCEworks(gnn_model, traffic_data, labels, epochs=5, batch_size=32):
+    graph_data = preprocess_data(traffic_data, labels)
+
+    # Normalize input features
+    graph_data.x = (graph_data.x - graph_data.x.mean(dim=0)) / (graph_data.x.std(dim=0) + 1e-8)
+
+    optimizer = torch.optim.Adam(gnn_model.parameters(), lr=1e-3)
+    loss_fn = torch.nn.BCELoss()
+
+    for epoch in range(epochs):
+        gnn_model.train()
+        optimizer.zero_grad()
+
+        # Forward Pass
+        raw_outputs = gnn_model(graph_data.x, graph_data.edge_index)
+        predictions = torch.clamp(torch.sigmoid(raw_outputs), min=1e-8, max=1 - 1e-8)
+
+        print(f"Epoch {epoch+1}, Raw Outputs (First 10):", predictions[:10].detach().cpu().numpy())
+
+        graph_data.y = graph_data.y.view(-1, 1)
+        loss = loss_fn(predictions, graph_data.y)
+        print(f"Epoch {epoch+1}, Loss Value: {loss.item()}")
+
+        loss.backward()
+
+        # Gradient Check
+        for name, param in gnn_model.named_parameters():
+            print(f"Gradient for {name}: {param.grad.norm().item() if param.grad is not None else 'None'}")
+
+        optimizer.step()
+    print("\nRetraining Complete!")
+
+def retrainBCELogitsSimple(gnn_model, traffic_data, labels, epochs=5, batch_size=32):
+    graph_data = preprocess_data(traffic_data, labels)
+
+    # Normalize input features
+    graph_data.x = (graph_data.x - graph_data.x.mean(dim=0)) / (graph_data.x.std(dim=0) + 1e-8)
+
+    optimizer = torch.optim.Adam(gnn_model.parameters(), lr=1e-3)
+    loss_fn = torch.nn.BCEWithLogitsLoss()
+
+    for epoch in range(epochs):
+        gnn_model.train()
+        optimizer.zero_grad()
+
+        # Forward Pass: No sigmoid here
+        raw_outputs = gnn_model(graph_data.x, graph_data.edge_index)
+        #print(f"Epoch {epoch+1}, Raw Outputs (First 10):", raw_outputs[:10].detach().cpu().numpy())
+
+        graph_data.y = graph_data.y.view(-1, 1)
+        loss = loss_fn(raw_outputs, graph_data.y)  # Raw logits passed to BCEWithLogitsLoss
+        print(f"Epoch {epoch+1}, Loss Value: {loss.item()}")
+
+        loss.backward()
+
+        # Gradient Check
+        #for name, param in gnn_model.named_parameters():
+            #print(f"Gradient for {name}: {param.grad.norm().item() if param.grad is not None else 'None'}")
+
+        optimizer.step()
+    print("\nRetraining Complete!")
+
+
+def retrainshish(gnn_model, traffic_data, labels, epochs=5, batch_size=32):
     # Preprocess the data into graph format
     graph_data = preprocess_data(traffic_data, labels)
 
-    # Compute class weights
-    classes = np.array([0, 1])  # Convert to NumPy array
-    class_weights = compute_class_weight('balanced', classes=classes, y=np.array(labels))
-    class_weights = torch.tensor(class_weights, dtype=torch.float32)  # Convert to PyTorch tensor
+    # Normalize input features to have zero mean and unit variance
+    graph_data.x = (graph_data.x - graph_data.x.mean(dim=0)) / (graph_data.x.std(dim=0) + 1e-8)
 
-    # Define optimizer and weighted loss function
-    optimizer = torch.optim.Adam(gnn_model.parameters(), lr=0.001)
-    loss_fn = nn.BCELoss()  # Binary Cross-Entropy Loss (weights applied dynamically)
+    # Initialize the Adam optimizer
+    optimizer = torch.optim.Adam(gnn_model.parameters(), lr = 0.001)
 
-    # Training loop
+    # Calculate class weights for handling class imbalance
+    class_counts = torch.bincount(graph_data.y.squeeze().long())  # Count number of samples per class
+    total_samples = len(graph_data.y)
+    class_weights = total_samples / (2.0 * class_counts)  # Balanced weights
+
+    # Define BCEWithLogitsLoss with class weights (pos_weight for class 1)
+    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=class_weights[1])
+    # Initialize tracking variables
+    training_losses = []
+    validation_losses = []
+
     for epoch in range(epochs):
-        gnn_model.train()
+        gnn_model.train()  # Set model to training mode
+        optimizer.zero_grad()  # Clear gradients from previous steps
 
-        # Split graph into batches
-        num_batches = len(graph_data.x) // batch_size + 1
-        for i in range(num_batches):
-            # Get the batch indices
-            start_idx = i * batch_size
-            end_idx = min((i + 1) * batch_size, len(graph_data.x))
-            batch_x = graph_data.x[start_idx:end_idx]
-            batch_y = graph_data.y[start_idx:end_idx]
+        # Forward Pass: Compute raw logits without applying sigmoid
+        raw_outputs = gnn_model(graph_data.x, graph_data.edge_index)
+        # Uncomment to debug raw outputs
+        # print(f"Epoch {epoch+1}, Raw Outputs (First 10):", raw_outputs[:10].detach().cpu().numpy())
 
-            # Adjust edge indices for the current batch
-            batch_edge_index = graph_data.edge_index.clone()
-            mask = (batch_edge_index[0] >= start_idx) & (batch_edge_index[0] < end_idx) & \
-                   (batch_edge_index[1] >= start_idx) & (batch_edge_index[1] < end_idx)
-            batch_edge_index = batch_edge_index[:, mask]  # Keep only edges within the batch
-            batch_edge_index -= start_idx  # Re-index edges for the batch
+        # Reshape target labels to match the output dimensions (BCE loss expects this format)
+        graph_data.y = graph_data.y.view(-1, 1)
 
-            if batch_edge_index.numel() == 0:  # Skip if no valid edges
-                continue
+        # Compute the loss using raw outputs and target labels
+        loss = loss_fn(raw_outputs, graph_data.y.float())  # Ensure graph_data.y is float
+        print(f"Epoch {epoch + 1}, Loss Value: {loss.item()}")
 
-            # Forward pass
-            optimizer.zero_grad()
-            predictions = gnn_model(batch_x, batch_edge_index)
+        # Backward Pass: Compute gradients
+        loss.backward()
 
-            # Compute weighted loss
-            batch_weights = class_weights[batch_y.long()]
-            loss = loss_fn(predictions, batch_y) * batch_weights.mean()
-            loss.backward()
-            optimizer.step()
+        # Uncomment to check gradients for debugging
+        # for name, param in gnn_model.named_parameters():
+        #     print(f"Gradient for {name}: {param.grad.norm().item() if param.grad is not None else 'None'}")
 
-        print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item():.4f}")
+        # Update model parameters based on gradients
+        optimizer.step()
 
-def retrain_oldnoweights(gnn_model, traffic_data, labels, epochs=5, batch_size=32):
+    print("\nRetraining Complete!")
+
+
+def retrainshish2(gnn_model, traffic_data, labels, val_data=None, val_labels=None,
+                  epochs=5, batch_size=32, use_dropout=True, scheduler_step=10, gamma=0.1):
     """
-    Retrains the GCNIDS on new graph-structured traffic data with validation.
-    """
-    from sklearn.model_selection import train_test_split
+    Retrains the GCNIDS model with dynamic class weights, optional dropout, and a learning rate scheduler.
 
-    # Preprocess the data into graph format
+    Args:
+        gnn_model: The GCNIDS model to retrain.
+        traffic_data: Input traffic data for training.
+        labels: Corresponding labels for the training data.
+        val_data: Validation traffic data (optional).
+        val_labels: Corresponding labels for the validation data (optional).
+        epochs: Number of training epochs.
+        batch_size: Batch size for training.
+        use_dropout: Whether to use dropout to handle overfitting.
+        scheduler_step: Step size for learning rate scheduler.
+        gamma: Multiplicative factor for learning rate decay.
+    """
+    # Preprocess the training and validation data into graph format
     graph_data = preprocess_data(traffic_data, labels)
+    if val_data is not None and val_labels is not None:
+        val_graph_data = preprocess_data(val_data, val_labels)
 
-    # Split data into training and validation sets
-    train_data, val_data, train_labels, val_labels = train_test_split(
-        traffic_data, labels, test_size=0.2, stratify=labels
-    )
-    train_graph = preprocess_data(train_data, train_labels)
-    val_graph = preprocess_data(val_data, val_labels)
+    # Normalize input features to have zero mean and unit variance
+    graph_data.x = (graph_data.x - graph_data.x.mean(dim=0)) / (graph_data.x.std(dim=0) + 1e-8)
+    if val_data is not None:
+        val_graph_data.x = (val_graph_data.x - val_graph_data.x.mean(dim=0)) / (val_graph_data.x.std(dim=0) + 1e-8)
 
-    # Compute class weights
-    classes = np.array([0, 1])  # Convert to NumPy array
-    class_weights = compute_class_weight('balanced', classes=classes, y=np.array(labels))
-    class_weights = torch.tensor(class_weights, dtype=torch.float32)  # Convert to PyTorch tensor
-
-    # Define optimizer and weighted loss function
+    # Initialize the Adam optimizer
     optimizer = torch.optim.Adam(gnn_model.parameters(), lr=0.001)
-    loss_fn = nn.BCELoss()
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=gamma)
 
-    # Training loop
+    # Calculate class weights for handling class imbalance
+    class_counts = torch.bincount(graph_data.y.squeeze().long())
+    total_samples = len(graph_data.y)
+    class_weights = total_samples / (2.0 * class_counts)  # Balanced weights
+
+    # Define BCEWithLogitsLoss with class weights (pos_weight for class 1)
+    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=class_weights[1])
+
+    training_losses = []
+    validation_losses = []
+
     for epoch in range(epochs):
-        gnn_model.train()
+        gnn_model.train()  # Set model to training mode
+        optimizer.zero_grad()  # Clear gradients from previous steps
 
-        # Train on batches
-        num_batches = len(train_graph.x) // batch_size + 1
-        for i in range(num_batches):
-            # Get the batch indices
-            start_idx = i * batch_size
-            end_idx = min((i + 1) * batch_size, len(train_graph.x))
-            batch_x = train_graph.x[start_idx:end_idx]
-            batch_y = train_graph.y[start_idx:end_idx]
+        # Forward Pass: Compute raw logits without applying sigmoid
+        raw_outputs = gnn_model(graph_data.x, graph_data.edge_index)
 
-            # Adjust edge indices for the current batch
-            batch_edge_index = train_graph.edge_index.clone()
-            mask = (batch_edge_index[0] >= start_idx) & (batch_edge_index[0] < end_idx) & \
-                   (batch_edge_index[1] >= start_idx) & (batch_edge_index[1] < end_idx)
-            batch_edge_index = batch_edge_index[:, mask]  # Keep only edges within the batch
-            batch_edge_index -= start_idx  # Re-index edges for the batch
+        # Reshape target labels to match the output dimensions (BCE loss expects this format)
+        graph_data.y = graph_data.y.view(-1, 1)
 
-            if batch_edge_index.numel() == 0:  # Skip if no valid edges
-                continue
+        # Compute the loss using raw outputs and target labels
+        loss = loss_fn(raw_outputs, graph_data.y.float())
 
-            # Forward pass
-            optimizer.zero_grad()
-            predictions = gnn_model(batch_x, batch_edge_index)
+        # Backward Pass: Compute gradients
+        loss.backward()
+        optimizer.step()  # Update model parameters
+        scheduler.step()  # Adjust learning rate
 
-            # Compute weighted loss
-            batch_weights = class_weights[batch_y.long()]
-            loss = loss_fn(predictions, batch_y) * batch_weights.mean()
-            loss.backward()
-            optimizer.step()
+        # Track training loss
+        training_losses.append(loss.item())
 
-        # Validate after each epoch
-        gnn_model.eval()
-        with torch.no_grad():
-            val_predictions = gnn_model(val_graph.x, val_graph.edge_index).round()
-            val_accuracy = accuracy_score(val_labels, val_predictions.numpy()) * 100
-            print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item():.4f}, Validation Accuracy: {val_accuracy:.4f}")
+        # Validation Phase (if validation data is provided)
+        if val_data is not None:
+            gnn_model.eval()  # Set model to evaluation mode
+            with torch.no_grad():  # No gradient computation for validation
+                val_outputs = gnn_model(val_graph_data.x, val_graph_data.edge_index)
+                val_graph_data.y = val_graph_data.y.view(-1, 1)
+                val_loss = loss_fn(val_outputs, val_graph_data.y.float())
+                validation_losses.append(val_loss.item())
+
+        print(f"Epoch {epoch + 1}, Training Loss: {loss.item()}",
+              f"Validation Loss: {val_loss.item() if val_data is not None else 'N/A'}")
+
+    print("\nRetraining Complete!")
+
+    # Debugging Helper for Overfitting
+    debug_overfitting(training_losses, validation_losses)
+
 
 def retrain(gnn_model, traffic_data, labels, epochs=5, batch_size=32):
-    """
-    Retrains the GCNIDS on new graph-structured traffic data with validation.
-    """
-    from sklearn.model_selection import train_test_split
-    from sklearn.utils.class_weight import compute_class_weight
-    import torch.nn.functional as F
-
     # Preprocess the data into graph format
     graph_data = preprocess_data(traffic_data, labels)
 
-    # Split data into training and validation sets
-    train_data, val_data, train_labels, val_labels = train_test_split(
-        traffic_data, labels, test_size=0.2, stratify=labels
-    )
-    train_graph = preprocess_data(train_data, train_labels)
-    val_graph = preprocess_data(val_data, val_labels)
+    # Normalize input features to have zero mean and unit variance
+    graph_data.x = (graph_data.x - graph_data.x.mean(dim=0)) / (graph_data.x.std(dim=0) + 1e-8)
 
-    # Compute class weights
-    classes = np.array([0, 1])  # Convert to NumPy array
-    class_weights = compute_class_weight('balanced', classes=classes, y=np.array(labels))
-    class_weights = torch.tensor(class_weights, dtype=torch.float32)  # Convert to PyTorch tensor
+    # Calculate class weights dynamically
+    benign_count = labels.count(0)
+    malicious_count = labels.count(1)
 
-    # Define optimizer
+    if malicious_count == 0:  # Avoid division by zero
+        pos_weight = torch.tensor(1.0, dtype=torch.float32)  # Default weight
+    else:
+        pos_weight = torch.tensor(benign_count / malicious_count, dtype=torch.float32)
+
+    # Initialize the BCEWithLogitsLoss with the dynamic pos_weight
+    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = torch.optim.Adam(gnn_model.parameters(), lr=0.001)
 
-    # Training loop
     for epoch in range(epochs):
         gnn_model.train()
+        optimizer.zero_grad()
 
-        # Train on batches
-        num_batches = len(train_graph.x) // batch_size + 1
-        for i in range(num_batches):
-            # Get the batch indices
-            start_idx = i * batch_size
-            end_idx = min((i + 1) * batch_size, len(train_graph.x))
-            batch_x = train_graph.x[start_idx:end_idx]
-            batch_y = train_graph.y[start_idx:end_idx]
+        # Forward Pass: Compute raw logits
+        raw_outputs = gnn_model(graph_data.x, graph_data.edge_index)
 
-            # Adjust edge indices for the current batch
-            batch_edge_index = train_graph.edge_index.clone()
-            mask = (batch_edge_index[0] >= start_idx) & (batch_edge_index[0] < end_idx) & \
-                   (batch_edge_index[1] >= start_idx) & (batch_edge_index[1] < end_idx)
-            batch_edge_index = batch_edge_index[:, mask]  # Keep only edges within the batch
-            batch_edge_index -= start_idx  # Re-index edges for the batch
+        # Reshape labels and calculate loss
+        graph_data.y = graph_data.y.view(-1, 1)
+        loss = loss_fn(raw_outputs, graph_data.y.float())
+        print(f"Epoch {epoch + 1}, Loss Value: {loss.item()}")
 
-            if batch_edge_index.numel() == 0:  # Skip if no valid edges
-                continue
+        # Backward Pass
+        loss.backward()
+        optimizer.step()
 
-            # Forward pass
-            optimizer.zero_grad()
-            predictions = gnn_model(batch_x, batch_edge_index)
-
-            # Compute weighted BCE loss
-            weighted_loss = F.binary_cross_entropy(
-                predictions,
-                batch_y,
-                weight=batch_y * class_weights[1] + (1 - batch_y) * class_weights[0]  # Apply class weights
-            )
-            weighted_loss.backward()
-            optimizer.step()
-
-        # Validate after each epoch
-        gnn_model.eval()
-        with torch.no_grad():
-            val_predictions = gnn_model(val_graph.x, val_graph.edge_index).round()
-            val_accuracy = accuracy_score(val_labels, val_predictions.numpy()) * 100
-            print(f"Epoch {epoch + 1}/{epochs}, Loss: {weighted_loss.item():.4f}, Validation Accuracy: {val_accuracy:.4f}")
+    print("\nRetraining Complete!")
