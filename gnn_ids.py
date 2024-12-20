@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from sklearn.neighbors import kneighbors_graph
 from torch_geometric.nn import GCNConv
 import numpy as np
 from torch_geometric.data import Data
@@ -35,19 +36,22 @@ class GCNIDS(nn.Module):
         x = self.output_layer(x)
         return x
 
-from sklearn.neighbors import kneighbors_graph
-
-def preprocess_data(traffic_data, labels, k=5):
+def preprocess_data(traffic_data, labels, max_k=10):
     traffic_data = np.array(traffic_data)
     labels = np.array(labels)
 
     x = torch.tensor(traffic_data, dtype=torch.float32)
-    knn_graph = kneighbors_graph(traffic_data, n_neighbors=k, mode="connectivity", include_self=False)
-    edge_index = torch.tensor(np.array(knn_graph.nonzero()), dtype=torch.long)
+    knn_graph = kneighbors_graph(traffic_data, n_neighbors=max_k, mode="distance", include_self=False)
 
+    # Filtro gli edge basati su una soglia di distanza
+    distance_threshold = np.percentile(knn_graph.data, 90)  # Mantieni i più vicini al 90°
+    knn_graph.data[knn_graph.data > distance_threshold] = 0
+    knn_graph.eliminate_zeros()
+
+    edge_index = torch.tensor(np.array(knn_graph.nonzero()), dtype=torch.long)
     y = torch.tensor(labels, dtype=torch.float32).unsqueeze(1)
-    graph_data = Data(x=x, edge_index=edge_index, y=y)
-    return graph_data
+
+    return Data(x=x, edge_index=edge_index, y=y)
 
 
 # Debugging Helper for Overfitting

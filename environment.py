@@ -627,6 +627,7 @@ class NetworkEnvironment:
         edge_index = torch.tensor(edges, dtype=torch.long).t()
         return edge_index
 
+
     def get_edge_index(self, k=5, distance_threshold=5):
         """
         Generates edge indices based on k-nearest neighbors and a distance threshold.
