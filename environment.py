@@ -248,7 +248,7 @@ class NetworkEnvironment:
         # Combine original features with augmented features
         return np.concatenate([features, [packet_size, protocol_type, temporal_pattern]])
 
-    def generate_traffic_oldy(self, action):
+    def generate_traffic(self, action):
         """
         Generate realistic network traffic features based on the chosen action.
 
@@ -486,7 +486,7 @@ class NetworkEnvironment:
         else:
             return 12 + (action % 6)  # Maps malicious actions to types 12-17
 
-    def generate_traffic(self, action):
+    def generate_trafficooo(self, action):
         """
         Generate network traffic features based on the chosen action.
 
@@ -627,7 +627,7 @@ class NetworkEnvironment:
         edge_index = torch.tensor(edges, dtype=torch.long).t()
         return edge_index
 
-    def get_edge_index(self, k=3, distance_threshold=0.1):
+    def get_edge_index(self, k=5, distance_threshold=5):
         """
         Generates edge indices based on k-nearest neighbors and a distance threshold.
 

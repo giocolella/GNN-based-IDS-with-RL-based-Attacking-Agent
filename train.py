@@ -77,7 +77,7 @@ traffic_data = []
 labels = []
 
 # Parameters for sliding window
-window_size = 3000  # Keep only the most recent 3,000 samples
+window_size = 5000  # Keep only the most recent 3,000 samples
 
 # Main training loop
 for episode in range(1, num_episodes + 1):

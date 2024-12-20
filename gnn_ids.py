@@ -9,83 +9,46 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.metrics.pairwise import cosine_similarity
 
+
+from torch_geometric.nn import GCNConv
+
 class GCNIDS(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, use_dropout=False, dropout_rate=0.5):
         super(GCNIDS, self).__init__()
         self.use_dropout = use_dropout
 
         # GCN Layers
-        self.conv1 = nn.Linear(input_dim, hidden_dim)
-        self.conv2 = nn.Linear(hidden_dim, output_dim)
+        self.conv1 = GCNConv(input_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, output_dim)
 
-        # Output layer for binary classification
-        self.output_layer = nn.Linear(output_dim, 1)  # Single logit for binary classification
+        # Output layer
+        self.output_layer = nn.Linear(output_dim, 1)
 
-        # Dropout Layer
-        if self.use_dropout:
-            self.dropout = nn.Dropout(p=dropout_rate)
-
-        # Batch Normalization
-        self.batch_norm1 = nn.BatchNorm1d(hidden_dim)
+        # Dropout
+        self.dropout = nn.Dropout(p=dropout_rate) if self.use_dropout else None
 
     def forward(self, x, edge_index):
-        """
-        Forward pass for the GNN.
-        Args:
-            x: Node features (num_nodes x num_features).
-            edge_index: Edge list in COO format (2 x num_edges).
-        """
-        # Create adjacency matrix from edge_index
-        num_nodes = x.size(0)
-        adjacency_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32, device=x.device)
-        adjacency_matrix[edge_index[0], edge_index[1]] = 1  # Set edges to 1
-
-        # Graph convolution
-        x = torch.mm(adjacency_matrix, x)  # First layer
-        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv1(x, edge_index))
         if self.use_dropout:
             x = self.dropout(x)
-        x = self.batch_norm1(x)
-
-        x = torch.mm(adjacency_matrix, x)  # Second layer
-        x = F.relu(self.conv2(x))
-
-        # Apply the output layer for binary classification
+        x = F.relu(self.conv2(x, edge_index))
         x = self.output_layer(x)
         return x
 
+from sklearn.neighbors import kneighbors_graph
 
-
-def preprocess_data(traffic_data, labels):
-    """
-    Converts traffic data and labels into graph format for the GCN.
-
-    Args:
-        traffic_data: List of traffic feature vectors (num_samples x feature_dim).
-        labels: List of labels (num_samples), 0 for benign, 1 for malicious.
-
-    Returns:
-        graph_data: A PyTorch Geometric Data object containing node features, edges, and labels.
-    """
-    # Convert traffic_data and labels to numpy arrays
+def preprocess_data(traffic_data, labels, k=5):
     traffic_data = np.array(traffic_data)
     labels = np.array(labels)
 
-    # Create nodes (each row in traffic_data is a node feature vector)
     x = torch.tensor(traffic_data, dtype=torch.float32)
+    knn_graph = kneighbors_graph(traffic_data, n_neighbors=k, mode="connectivity", include_self=False)
+    edge_index = torch.tensor(np.array(knn_graph.nonzero()), dtype=torch.long)
 
-    # Create edges (for simplicity, fully connected graph)
-    num_nodes = x.shape[0]
-    edge_index = torch.tensor(
-        [[i, j] for i in range(num_nodes) for j in range(num_nodes) if i != j], dtype=torch.long
-    ).t()
-
-    # Create labels for nodes
     y = torch.tensor(labels, dtype=torch.float32).unsqueeze(1)
-
-    # Create a PyTorch Geometric Data object
     graph_data = Data(x=x, edge_index=edge_index, y=y)
     return graph_data
+
 
 # Debugging Helper for Overfitting
 def debug_overfitting(train_losses, val_losses):
