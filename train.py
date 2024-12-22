@@ -130,20 +130,21 @@ for episode in range(1, num_episodes + 1):
         balanced_accuracy = balanced_accuracy_score(labels, predictions) * 100
         mcc = matthews_corrcoef(labels, predictions)
 
-        # Confusion Matrix for Multiclass
+        # Calculate confusion matrix
         cm = confusion_matrix(labels, predictions)
 
-        # Aggregate FP, FN, TP, and TN for all classes
-        false_positives = cm.sum(axis=0) - np.diag(cm)  # Column sum minus diagonal (FP)
-        false_negatives = cm.sum(axis=1) - np.diag(cm)  # Row sum minus diagonal (FN)
-        true_positives = np.diag(cm)  # Diagonal elements (TP)
-        true_negatives = cm.sum() - (false_positives + false_negatives + true_positives)  # TN
+        # Ensure the confusion matrix is 2x2 for binary classification
+        if cm.shape == (2, 2):
+            tn, fp, fn, tp = cm.ravel()
+        else:
+            raise ValueError(
+                f"Unexpected confusion matrix shape: {cm.shape}. Expected shape: (2, 2) for binary classification.")
 
-        # Sum the values to get single scalar values
-        total_fp = false_positives.sum()
-        total_fn = false_negatives.sum()
-        total_tp = true_positives.sum()
-        total_tn = true_negatives.sum()
+        # Aggregate FP, FN, TP, and TN
+        total_fp = fp
+        total_fn = fn
+        total_tp = tp
+        total_tn = tn
 
         # Total classifications
         total_classifications = cm.sum()
