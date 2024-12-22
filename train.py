@@ -24,8 +24,8 @@ def visualize_graph(graph_data, predictions=None):
         nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=300)
 
     plt.title("Graph Structure Visualization")
-    plt.show()
-
+    #plt.show()
+#adding
 def visualize_single_dim_embeddings(embeddings, labels):
     plt.figure(figsize=(12, 6))
     plt.scatter(range(len(embeddings)), embeddings[:, 0], c=labels, cmap="coolwarm", alpha=0.7)
@@ -78,7 +78,7 @@ labels = []
 
 # Parameters for sliding window
 window_size = 5000  # Keep only the most recent 3,000 samples
-
+gnn_model.pretrain("file.csv")
 # Main training loop
 for episode in range(1, num_episodes + 1):
     state = env.reset()
@@ -161,6 +161,6 @@ for episode in range(1, num_episodes + 1):
         print(cm)
 
         # Visualization
-        embeddings = gnn_model(graph_data.x, graph_data.edge_index).detach().numpy()
-        visualize_single_dim_embeddings(embeddings, labels)
-        plot_degree_distribution(graph_data)
+        #embeddings = gnn_model(graph_data.x, graph_data.edge_index).detach().numpy()
+        #visualize_single_dim_embeddings(embeddings, labels)
+        #plot_degree_distribution(graph_data)

@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -35,6 +36,45 @@ class GCNIDS(nn.Module):
         x = F.relu(self.conv2(x, edge_index))
         x = self.output_layer(x)
         return x
+
+    def pretrain(self, csv_path):
+        """
+        Pretrain the model by reducing the dataset to specific fields and encoding labels.
+
+        Args:
+            csv_path (str): Path to the dataset in CSV format.
+
+        Returns:
+            Data: Preprocessed graph data.
+        """
+
+        # Load dataset
+        df = pd.read_csv(csv_path)
+
+        # Reduce the dataset to specified fields
+        df_reduced = pd.DataFrame({
+            "flow_duration": np.random.uniform(1, 50, size=len(df)),
+            "packet_size_mean": df["Pkt Len Mean"],
+            "packet_size_std": df["Pkt Len Std"],
+            "flow_bytes_sent": df["TotLen Fwd Pkts"],
+            "flow_bytes_received": df["TotLen Bwd Pkts"],
+            "flow_packet_rate": df["Flow Pkts/s"],
+            "protocol": 1,  # UDP (as specified)
+            "flags": 0,  # Placeholder
+            "ttl": np.random.uniform(10, 30, size=len(df)),
+            "header_length": df["Fwd Header Len"],
+            "payload_length": df["Pkt Size Avg"],
+            "is_encrypted": 0,  # Placeholder
+            "connection_state": df["Label"].apply(lambda x: 0 if x == "Benign" else 1)  # Binary label
+        })
+
+        # Split features and labels
+        traffic_data = df_reduced.drop(columns=["connection_state"]).values
+        labels = df_reduced["connection_state"].values
+
+        # Preprocess the data into graph format
+        graph_data = preprocess_data(traffic_data, labels)
+        return graph_data
 
 def preprocess_data(traffic_data, labels, max_k=10):
     traffic_data = np.array(traffic_data)
