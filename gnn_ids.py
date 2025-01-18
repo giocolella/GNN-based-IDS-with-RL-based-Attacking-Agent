@@ -1,18 +1,17 @@
-import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.neighbors import kneighbors_graph
 from torch_geometric.nn import GCNConv
 import numpy as np
+import pandas as pd
 from torch_geometric.data import Data
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.metrics.pairwise import cosine_similarity
-
-
-from torch_geometric.nn import GCNConv
+import random
+import matplotlib.pyplot as plt
 
 class GCNIDS(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, use_dropout=False, dropout_rate=0.5):
@@ -51,26 +50,9 @@ class GCNIDS(nn.Module):
         # Load dataset
         df = pd.read_csv(csv_path)
 
-        # Reduce the dataset to specified fields
-        df_reduced = pd.DataFrame({
-            "flow_duration": np.random.uniform(1, 50, size=len(df)),
-            "packet_size_mean": df["Pkt Len Mean"],
-            "packet_size_std": df["Pkt Len Std"],
-            "flow_bytes_sent": df["TotLen Fwd Pkts"],
-            "flow_bytes_received": df["TotLen Bwd Pkts"],
-            "flow_packet_rate": df["Flow Pkts/s"],
-            "protocol": 1,  # UDP (as specified)
-            "flags": 0,  # Placeholder
-            "ttl": np.random.uniform(10, 30, size=len(df)),
-            "header_length": df["Fwd Header Len"],
-            "payload_length": df["Pkt Size Avg"],
-            "is_encrypted": 0,  # Placeholder
-            "connection_state": df["Label"].apply(lambda x: 0 if x == "Benign" else 1)  # Binary label
-        })
-
         # Split features and labels
-        traffic_data = df_reduced.drop(columns=["connection_state"]).values
-        labels = df_reduced["connection_state"].values
+        traffic_data = df.values
+        labels = df.values
 
         # Preprocess the data into graph format
         graph_data = preprocess_data(traffic_data, labels)
@@ -93,7 +75,6 @@ def preprocess_data(traffic_data, labels, max_k=10):
 
     return Data(x=x, edge_index=edge_index, y=y)
 
-
 # Debugging Helper for Overfitting
 def debug_overfitting(train_losses, val_losses):
     """
@@ -103,7 +84,6 @@ def debug_overfitting(train_losses, val_losses):
         train_losses (list): List of training losses over epochs.
         val_losses (list): List of validation losses over epochs.
     """
-    import matplotlib.pyplot as plt
 
     plt.figure(figsize=(10, 6))
     plt.plot(train_losses, label="Training Loss")
@@ -307,6 +287,67 @@ def retrainshish2(gnn_model, traffic_data, labels, val_data=None, val_labels=Non
     # Debugging Helper for Overfitting
     debug_overfitting(training_losses, validation_losses)
 
+def retrain_balanced(gnn_model, traffic_data, labels, optimizer, epochs=10, batch_size=32):
+    """
+    Retrains the GNN model with balanced traffic data to handle class imbalance.
+
+    Args:
+        gnn_model: The GNN-based IDS model to retrain.
+        traffic_data: The feature data for training (list or array).
+        labels: The corresponding labels for the training data.
+        epochs: Number of epochs for retraining.
+        batch_size: Batch size for training.
+    """
+    from sklearn.utils import resample
+
+    # Combine data and labels for easier manipulation
+    combined_data = list(zip(traffic_data, labels))
+
+    # Separate benign (0) and malicious (1) samples
+    benign = [sample for sample in combined_data if sample[1] == 0]
+    malicious = [sample for sample in combined_data if sample[1] == 1]
+
+    # Balance classes by oversampling or undersampling
+    if len(benign) > len(malicious):
+        benign = resample(benign, replace=True, n_samples=len(malicious), random_state=42) #previously False
+    else:
+        malicious = resample(malicious, replace=True, n_samples=len(benign), random_state=42)
+
+    # Combine balanced data and shuffle
+    balanced_data = benign + malicious
+    random.shuffle(balanced_data)
+
+    # Unpack balanced data back into features and labels
+    traffic_data, labels = zip(*balanced_data)
+
+    # Preprocess the data into graph format
+    graph_data = preprocess_data(traffic_data, labels)
+
+    # Normalize input features
+    graph_data.x = (graph_data.x - graph_data.x.mean(dim=0)) / (graph_data.x.std(dim=0) + 1e-8)
+    #Initialize the loss function
+    loss_fn = torch.nn.BCEWithLogitsLoss()
+
+    # Train the GNN model
+    for epoch in range(epochs):
+        gnn_model.train()
+        optimizer.zero_grad()
+
+        # Forward pass
+        predictions = gnn_model(graph_data.x, graph_data.edge_index)
+
+        # Reshape target labels to match predictions
+        graph_data.y = graph_data.y.view(-1, 1)
+
+        # Compute loss
+        loss = loss_fn(predictions, graph_data.y.float())
+        print(f"Epoch {epoch + 1}, Loss Value: {loss.item()}")
+
+        # Backward pass
+        loss.backward()
+        optimizer.step()
+
+    print("\nRetraining Complete!")
 
 def retrain(gnn_model, traffic_data, labels, epochs=5, batch_size=32):
     # Preprocess the data into graph format
