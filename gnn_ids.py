@@ -6,6 +6,7 @@ from torch_geometric.nn import GCNConv
 import numpy as np
 import pandas as pd
 from torch_geometric.data import Data
+from sklearn.utils import resample
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
@@ -298,7 +299,6 @@ def retrain_balanced(gnn_model, traffic_data, labels, optimizer, epochs=10, batc
         epochs: Number of epochs for retraining.
         batch_size: Batch size for training.
     """
-    from sklearn.utils import resample
 
     # Combine data and labels for easier manipulation
     combined_data = list(zip(traffic_data, labels))

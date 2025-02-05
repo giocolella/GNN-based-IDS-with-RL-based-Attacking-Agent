@@ -153,7 +153,7 @@ class NetworkEnvironment:
         next_state = np.random.rand(self.state_size)
         return next_state, reward, done, {}
 
-    def step(self, action):
+    def stepSkewed(self, action):
         # Use the agent's action to decide the traffic type
         is_malicious = action == 1  # Assuming action 0: benign, 1: malicious
         traffic_features = self.generate_traffic(action)
@@ -217,6 +217,66 @@ class NetworkEnvironment:
 
         # Define whether the episode should end
         done = len(self.traffic_data) > 5000  # Example termination condition
+        next_state = np.random.rand(self.state_size)
+        return next_state, reward, done, {}
+
+    def step(self, action):
+        is_malicious = action == 1  # 0: benign, 1: malicious
+        traffic_features = self.generate_traffic(action)
+
+        # Append the new traffic instance and label
+        self.traffic_data.append(traffic_features)
+        self.labels.append(is_malicious)
+
+        # Evaluate traffic with the GNN
+        traffic_data_np = np.array(self.traffic_data, dtype=np.float32)
+        x = torch.from_numpy(traffic_data_np)
+        edge_index = self.get_edge_index()
+        # Use sigmoid to get a probability-like output from the IDS
+        detection_result = torch.sigmoid(self.gnn_model(x, edge_index))[-1]
+
+        if detection_result.numel() == 1:
+            detection_result = detection_result.item()
+        else:
+            detection_result = detection_result.mean().item()
+
+        #Sliding window for imbalance calculation -----
+        window_size = 1000
+        recent_labels = self.labels[-min(len(self.labels), window_size):]
+        benign_count = recent_labels.count(0)
+        malicious_count = recent_labels.count(1)
+        total_count = benign_count + malicious_count
+
+        if total_count > 0:
+            benign_ratio = benign_count / total_count
+            malicious_ratio = malicious_count / total_count
+        else:
+            benign_ratio = 0.5
+            malicious_ratio = 0.5
+
+        imbalance_factor = 1 - abs(benign_ratio - malicious_ratio)
+
+        benign_correct_reward    = 15 * imbalance_factor
+        benign_incorrect_penalty = -10 * imbalance_factor  # increased penalty for false positives
+        malicious_correct_penalty= -20 * imbalance_factor  # increased penalty for detected malicious traffic
+        malicious_incorrect_reward = 25 * imbalance_factor
+
+        if is_malicious:
+            # For malicious traffic, if the IDS fails to flag it reward the agent but if flagged, penalize
+            if detection_result <= 0.6:
+                reward = malicious_incorrect_reward  # Reward for evading detection
+            else:
+                reward = malicious_correct_penalty  # Penalty for being detected
+        else:
+            if detection_result > 0.6:
+                reward = benign_incorrect_penalty  # Penalty for misclassifying benign traffic
+            else:
+                reward = benign_correct_reward  # Reward for correct classification
+
+        #print(f"Debug: benign_ratio={benign_ratio:.2f}, imbalance_factor={imbalance_factor:.2f}")
+
+        # Terminate episode if too many traffic samples have been collected
+        done = len(self.traffic_data) > 5000
         next_state = np.random.rand(self.state_size)
         return next_state, reward, done, {}
 
@@ -606,7 +666,7 @@ class NetworkEnvironment:
         return edge_index
 
 
-    def get_edge_index(self, k=5, distance_threshold=10.0):
+    def get_edge_indexNoEmpyNodeCheck(self, k=5, distance_threshold=10.0):
         """
         Generates edge indices based on k-nearest neighbors and a distance threshold.
 
@@ -639,3 +699,33 @@ class NetworkEnvironment:
 
         return edge_index
 
+    def get_edge_index(self, k=5, distance_threshold=10.0):
+        num_nodes = len(self.traffic_data)
+        if num_nodes < 2:
+            return torch.empty((2, 0), dtype=torch.long)
+
+        adjusted_k = min(k, num_nodes - 1)
+        features = np.array(self.traffic_data)
+        knn_graph = kneighbors_graph(features, n_neighbors=adjusted_k, mode="connectivity", include_self=False)
+        distances = euclidean_distances(features)
+        row, col = knn_graph.nonzero()
+        valid_edges = [(i, j) for i, j in zip(row, col) if distances[i, j] <= distance_threshold]
+
+        # Additional safeguard: Ensure every node is connected to at least one neighbor.
+        nodes_with_edges = set()
+        for i, j in valid_edges:
+            nodes_with_edges.add(i)
+            nodes_with_edges.add(j)
+        for i in range(num_nodes):
+            if i not in nodes_with_edges:
+                dists = distances[i]
+                j = np.argsort(dists)[1]  # second smallest (first is itself)
+                valid_edges.append((i, j))
+                nodes_with_edges.add(i)
+                nodes_with_edges.add(j)
+
+        if valid_edges:
+            edge_index = torch.tensor(valid_edges, dtype=torch.long).t().contiguous()
+        else:
+            edge_index = torch.empty((2, 0), dtype=torch.long)
+        return edge_index

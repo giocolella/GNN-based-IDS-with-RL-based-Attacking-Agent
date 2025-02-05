@@ -1,6 +1,6 @@
 import torch
 import torch.optim as optim
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix,balanced_accuracy_score, matthews_corrcoef, roc_curve, auc, precision_recall_curve
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, balanced_accuracy_score, matthews_corrcoef, roc_curve, auc, precision_recall_curve
 import numpy as np
 from environment import *
 from gnn_ids import *
@@ -253,7 +253,7 @@ optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14) #0.14
 schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=1)
 
 # Training hyperparameters
-num_episodes = 150
+num_episodes = 250
 batch_size = 32
 retrain_interval = 10
 
@@ -321,8 +321,8 @@ for episode in range(1, num_episodes + 1):
     gnn_lr.append(scheduler.get_last_lr()[0])  # For GNN optimizer
     agent_lr.append(schedulerAgent.get_last_lr()[0])  # For RL agent optimizer
 
-    if episode >= 100:
-        set_learning_rate(optimizer,0.0000001)
+    #if episode >= 100:
+        #set_learning_rate(optimizer,0.0000001)
 
     # Retrain the IDS every retrain_interval episodes
     if episode % retrain_interval == 0:
