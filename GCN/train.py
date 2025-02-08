@@ -1,35 +1,14 @@
-import torch
 import torch.optim as optim
-import torch.nn as nn
-import random
-import numpy as np
-import pandas as pd
-import xgboost_ids as xgb
+from sklearn.metrics import precision_score, recall_score, f1_score, balanced_accuracy_score, matthews_corrcoef, roc_curve, auc, precision_recall_curve
+from GCN.environment import *
+from gnn_ids import *
+from GCN.agent import *
 import networkx as nx
+from torch_geometric.utils import to_networkx
 import matplotlib.pyplot as plt
-from torch_geometric.data import Data
-from sklearn.metrics import (
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    balanced_accuracy_score,
-    matthews_corrcoef,
-    roc_curve,
-    auc,
-    precision_recall_curve,
-    confusion_matrix
-)
+import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from torch_geometric.utils import to_networkx
-
-# Import dei moduli custom (assicurarsi che i file environment.py, agent.py e xgb_ids.py siano nel path)
-from environment import *   # Gestisce l'ambiente e funzioni di preprocessamento (es. preprocess_data)
-from agent import *         # Contiene la definizione del DQNAgent
-from xgboost_ids import XGBIDS  # Utilizzeremo il nostro IDS basato su XGBoost
-
-# ------------------------- FUNZIONI AUSILIARIE -------------------------
 
 def set_seed(seed):
     random.seed(seed)
@@ -37,21 +16,26 @@ def set_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)  # Per multi-GPU
+        torch.cuda.manual_seed_all(seed)  # For multi-GPU setups
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
 def set_learning_rate(optimizer, new_lr):
     """
-    Aggiorna il learning rate per tutti i gruppi di parametri di un ottimizzatore.
+    Updates the learning rate for all parameter groups in an optimizer.
+
+    Args:
+        optimizer: The optimizer whose learning rate needs to be updated.
+        new_lr: The new learning rate to set.
     """
     for param_group in optimizer.param_groups:
         param_group['lr'] = new_lr
 
+
 def load_csv_data(file_path):
     data = pd.read_csv(file_path)
-    features = data.iloc[:, :-1].values  # Tutte le colonne tranne l'ultima
-    labels = data['Label'].apply(lambda x: 0 if x == "Benign" else 1).values  # Conversione in binario
+    features = data.iloc[:, :-1].values  # All columns except the last one
+    labels = data['Label'].apply(lambda x: 0 if x == "Benign" else 1).values  # Convert labels to binary
     scaler = StandardScaler()
     features = scaler.fit_transform(features)
     return train_test_split(features, labels, test_size=0.2, random_state=42)
@@ -74,36 +58,10 @@ def pretrain_agent(agent, features, labels, epochs=1, batch_size=32):
             optimizer.step()
 
         print(f"Epoch {epoch+1}/{epochs}, Loss: {loss.item()}")
-def preprocess_data(traffic_data, labels):
-    """
-    Converte i dati di traffico e le etichette in un oggetto Data di PyTorch Geometric.
-
-    Parametri:
-      - traffic_data: Lista o array di feature, ad esempio di forma (num_samples, num_features).
-      - labels: Lista o array di etichette corrispondenti.
-
-    Ritorna:
-      - data: Un oggetto torch_geometric.data.Data contenente:
-            x: i nodi (feature tensor),
-            edge_index: l'indice degli archi (in questo caso vuoto),
-            y: le etichette.
-    """
-    # Converte traffic_data in tensore di tipo float
-    x = torch.tensor(traffic_data, dtype=torch.float32)
-
-    # Converte labels in tensore di tipo long (intero)
-    y = torch.tensor(labels, dtype=torch.long)
-
-    # Creazione di edge_index vuoto. Se hai la logica per costruire il grafo, sostituisci questo blocco.
-    edge_index = torch.empty((2, 0), dtype=torch.long)
-
-    # Crea e restituisce l'oggetto Data
-    data = Data(x=x, edge_index=edge_index, y=y)
-    return data
 
 def pretrain_agentMSE(agent, features, labels, epochs=1, batch_size=32):
     optimizer = torch.optim.Adam(agent.model.parameters(), lr=agent.learning_rate)
-    loss_fn = nn.MSELoss()  # Utilizzo della MSE Loss
+    loss_fn = nn.MSELoss()  # Use Mean Squared Error Loss
 
     for epoch in range(epochs):
         for i in range(0, len(features), batch_size):
@@ -112,17 +70,23 @@ def pretrain_agentMSE(agent, features, labels, epochs=1, batch_size=32):
 
             optimizer.zero_grad()
 
-            # Conversione in tensori
+            # Convert inputs and targets to tensors
             inputs = torch.tensor(batch_features, dtype=torch.float32)
-            targets = torch.tensor(batch_labels, dtype=torch.float32).unsqueeze(1)
+            targets = torch.tensor(batch_labels, dtype=torch.float32).unsqueeze(1)  # Targets must match output shape
+
+            # Forward pass
             outputs = agent.model(inputs)
+
+            # Compute loss
             loss = loss_fn(outputs, targets)
+
+            # Backward pass and optimization step
             loss.backward()
             optimizer.step()
 
         print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item()}")
 
-# Funzione per visualizzare la struttura del grafo
+# Function to visualize the graph structure
 def visualize_graph(graph_data, predictions=None):
     G = to_networkx(graph_data, to_undirected=True)
     pos = nx.spring_layout(G)
@@ -137,19 +101,30 @@ def visualize_graph(graph_data, predictions=None):
     plt.title("Graph Structure Visualization")
     plt.show()
 
+
 def plot_traffic_distribution(benign, malicious):
-    labels_plot = ['Benign', 'Malicious']
+    # Data for the plot
+    labels = ['Benign', 'Malicious']
     frequencies = [benign, malicious]
+
+    # Create the bar plot
     plt.figure(figsize=(8, 6))
-    plt.bar(labels_plot, frequencies, color=['green', 'red'], alpha=0.7)
+    plt.bar(labels, frequencies, color=['green', 'red'], alpha=0.7)
+
+    # Add labels and title
     plt.xlabel('Traffic Type', fontsize=12)
     plt.ylabel('Frequency', fontsize=12)
     plt.title('Traffic Distribution (Benign vs Malicious)', fontsize=14)
+
+    # Annotate values on top of the bars
     for i, freq in enumerate(frequencies):
         plt.text(i, freq + 0.01 * max(frequencies), str(freq), ha='center', fontsize=10)
+
+    # Display the plot
     plt.tight_layout()
     plt.show()
 
+# Function to plot reward trends
 def plot_rewards(rewards):
     plt.figure(figsize=(10, 6))
     plt.plot(rewards, label="Total Reward")
@@ -160,6 +135,7 @@ def plot_rewards(rewards):
     plt.legend()
     plt.show()
 
+# Function to plot Epsilon Decay
 def plot_epsilon_decay(epsilon_values):
     plt.figure(figsize=(10, 6))
     plt.plot(epsilon_values, label="Epsilon Value")
@@ -170,6 +146,7 @@ def plot_epsilon_decay(epsilon_values):
     plt.legend()
     plt.show()
 
+# Function to plot RL agent loss
 def plot_agent_loss(losses):
     plt.figure(figsize=(10, 6))
     plt.plot(losses, label="Loss")
@@ -191,7 +168,8 @@ def plot_learning_rate(lr_values, label):
     plt.tight_layout()
     plt.show()
 
-def plot_roc_curve(fpr, tpr, roc_auc):
+def plot_roc_curve(fpr,tpr,roc_auc):
+    # Plot ROC curve
     plt.figure(figsize=(10, 6))
     plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.2f}")
     plt.xlabel("False Positive Rate")
@@ -201,7 +179,8 @@ def plot_roc_curve(fpr, tpr, roc_auc):
     plt.grid()
     plt.show()
 
-def plot_precision_recall_curve(recall_vals, precision_vals):
+def plot_precision_recall_curve(recall_vals,precision_vals):
+    # Plot Precision-Recall curve
     plt.figure(figsize=(10, 6))
     plt.plot(recall_vals, precision_vals, label="Precision-Recall Curve")
     plt.xlabel("Recall")
@@ -221,9 +200,11 @@ def visualize_single_dim_embeddings(embeddings, labels):
     plt.grid()
     plt.show()
 
+# Function to plot degree distribution
 def plot_degree_distribution(graph_data):
     G = to_networkx(graph_data, to_undirected=True)
     degrees = [val for (node, val) in G.degree()]
+
     plt.figure(figsize=(10, 6))
     plt.hist(degrees, bins=20, color="blue", alpha=0.7)
     plt.title("Degree Distribution")
@@ -240,42 +221,47 @@ def plot_metric(metric_values, metric_name, episodes):
     plt.title(f"{metric_name} Progression", fontsize=14)
     plt.grid(True)
     plt.legend()
+
+    # Ensure x-axis ticks correspond to the provided episode numbers
     plt.xticks(episodes)
+
     plt.tight_layout()
     plt.show()
 
-# ------------------------- SETTAGGIO INIZIALE -------------------------
+set_seed(16)  #decent:4   good:1,3+,7,8+,9+   great to improve: 13, 14+, 15++, 16++,
 
-set_seed(16)  # Imposta il seed per la riproducibilità
-
-# Inizializza l'ambiente
-env = NetworkEnvironment(gnn_model=None)  # Il modello IDS verrà assegnato subito dopo
+# Initialize the environment
+env = NetworkEnvironment(gnn_model=None)  # GNN model will be attached later
 state_size = env.state_size
 action_size = env.action_size
 
-# ------------------------- INIZIALIZZAZIONE DEI MODELLI -------------------------
+# Initialize the GNN-based IDS
+gnn_model = GCNIDS(input_dim=state_size, hidden_dim=32, output_dim=1, use_dropout=True, dropout_rate=0.3)  # Enable dropout
+optimizer = optim.Adam(gnn_model.parameters(), lr=1e-2) #1e-2
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=1)
+loss_fn = torch.nn.BCEWithLogitsLoss()
 
-# Inizializza il modello IDS basato su XGBoost
-ids_model = XGBIDS()
-env.gnn_model = ids_model
+# Attach GNN model to the environment
+env.gnn_model = gnn_model
 
-# Inizializza l'agente di RL
+# Initialize the RL agent
 agent = DQNAgent(state_size=state_size, action_size=action_size)
-optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)
+optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14) #0.14
 schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=1)
 
-# Iperparametri per il training
-num_episodes = 250
+# Training hyperparameters
+num_episodes = 1000
 batch_size = 32
 retrain_interval = 10
 
-# Variabili per la raccolta delle metriche
+# Store metrics
 episodic_rewards = []
 epsilon_values = []
 agents_losses = []
 traffic_data = []
 labels = []
 recorded_episodes = []
+gnn_lr = []
 agent_lr = []
 ids_metrics = {
     'Accuracy': [],
@@ -286,26 +272,23 @@ ids_metrics = {
     'Mcc': []
 }
 
-# Parametri per la sliding window (per mantenere solo gli ultimi N campioni)
-window_size = 10000
 
-# Carica e preprocessa il dataset
+# Parameters for sliding window
+window_size = 10000  # Keep only the most recent 3,000 samples
+
+# Load and preprocess the dataset
 X_train, X_test, y_train, y_test = load_csv_data("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/mergedfilteredbig.csv")
 
-# Pre-train dell'agente RL (ad es. con MSE loss)
+# Pre-train the agent
 pretrain_agentMSE(agent, X_train, y_train)
-
-# Pre-train del IDS (XGBIDS utilizza il file CSV per il training)
-ids_model.pretrain("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/mergedfilteredbig2.csv")
+gnn_model.pretrain("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/pretrain_dataset.csv")
 print("Pre-training Completed")
-
-# ------------------------- TRAINING LOOP -------------------------
-
+# Main training loop
 for episode in range(1, num_episodes + 1):
     state = env.reset()
     total_reward = 0
 
-    for step in range(50):  # Simula fino a 50 step per episodio
+    for step in range(50):  # Simulate up to 50 steps per episode
         action = agent.act(state)
         next_state, reward, done, _ = env.step(action)
         agent.remember(state, action, reward, next_state, done)
@@ -314,46 +297,50 @@ for episode in range(1, num_episodes + 1):
 
         if done:
             break
-
     episodic_rewards.append(total_reward)
     epsilon_values.append(agent.epsilon)
     print(f"Episode {episode}/{num_episodes}, Total Reward: {total_reward:.1f}")
 
-    # Allenamento dell'agente RL
+    # Train the agent
     if len(agent.memory) > batch_size:
-        # Si può scegliere la loss appropriata; qui uso MSE per coerenza con il pretrain_agentMSE
-        agent.replay(batch_size, optimizerAgent, schedulerAgent, nn.MSELoss())
+        agent.replay(batch_size, optimizerAgent, schedulerAgent, loss_fn)
+        #agents_losses.append(loss_fn.item())
 
-    # Raccogli i dati del traffico per il retraining
+    # Collect traffic data for retraining
     traffic_data.extend(env.traffic_data)
     labels.extend(env.labels)
 
-    # Applica la sliding window
+    # Apply the sliding window
     if len(traffic_data) > window_size:
-        traffic_data = traffic_data[-window_size:]
-        labels = labels[-window_size:]
+        traffic_data = traffic_data[-window_size:]  # Keep only the last `window_size` samples
+        labels = labels[-window_size:]  # Keep the corresponding labels
 
-    agent_lr.append(schedulerAgent.get_last_lr()[0])
+    gnn_lr.append(scheduler.get_last_lr()[0])  # For GNN optimizer
+    agent_lr.append(schedulerAgent.get_last_lr()[0])  # For RL agent optimizer
 
-    # Retrain del IDS ogni "retrain_interval" episodi
+    #if episode >= 100:
+        #set_learning_rate(optimizer,0.0000001)
+
+    # Retrain the IDS every retrain_interval episodes
     if episode % retrain_interval == 0:
         agent.update_target_network()
         recorded_episodes.append(episode)
         print("Target network updated.")
         print("Retraining IDS...")
-        ids_model.retrain(traffic_data, labels)
-        print("IDS retraining completed.")
+        gnn_checkpoint = gnn_model.state_dict().copy()
+        print(f"Old GNN Learning Rate: {scheduler.get_last_lr()[0]}")
+        retrain_balanced(gnn_model, traffic_data, labels, optimizer, epochs=5, batch_size=batch_size)
 
-        # Valutazione delle performance del IDS
-        graph_data = preprocess_data(traffic_data, labels)  # Si assume che questa funzione sia definita in environment.py
+        # Scheduler step after retraining
+        scheduler.step()
+        print(f"New GNN Learning Rate: {scheduler.get_last_lr()[0]}")
 
-        # Il metodo forward di XGBIDS accetta (x, edge_index) anche se non usa edge_index
-        outputs = ids_model(graph_data.x, graph_data.edge_index)
-        # Convertiamo le uscite in predizioni binarie
-        predictions = outputs.detach().round().squeeze().numpy()
+        # Evaluate IDS performance
+        graph_data = preprocess_data(traffic_data, labels)
+        predictions = gnn_model(graph_data.x, graph_data.edge_index).detach().round().squeeze().numpy()
         predictions = (predictions > 0.5).astype(int)
 
-        # Calcola le metriche
+        # Calculate metrics
         accuracy = accuracy_score(labels, predictions) * 100
         precision = precision_score(labels, predictions, average="binary", zero_division=1) * 100
         recall = recall_score(labels, predictions, average="binary", zero_division=1) * 100
@@ -368,30 +355,63 @@ for episode in range(1, num_episodes + 1):
         ids_metrics['Balanced Accuracy'].append(balanced_accuracy)
         ids_metrics['Mcc'].append(mcc)
 
-        print(f"Retrained IDS - Accuracy: {accuracy:.4f}%, Precision: {precision:.4f}%, Recall: {recall:.4f}%, F1-Score: {f1:.4f}%")
-        print(f"Balanced Accuracy: {balanced_accuracy:.4f}%, MCC: {mcc:.4f}")
+        # Rollback if MCC is below 0.3
+        if episode > 50 and mcc < 0.4:
+            print(f"MCC ({mcc:.4f}) is below threshold. Reverting GNN to previous state.")
+            #gnn_model.load_state_dict(gnn_checkpoint)
+        else:
+            print(f"MCC ({mcc:.4f}) meets threshold. Keeping updated GNN state.")
 
-        # Calcola e stampa la confusion matrix
+        # ROC and Precision-Recall curves
+        fpr, tpr, _ = roc_curve(labels, predictions)
+        precision_vals, recall_vals, _ = precision_recall_curve(labels, predictions)
+        roc_auc = auc(fpr, tpr)
+
+        #plot_roc_curve(fpr, tpr, roc_auc)
+        #plot_precision_recall_curve(recall_vals, precision_vals)
+
+        # Calculate confusion matrix
         cm = confusion_matrix(labels, predictions)
+
+        # Ensure the confusion matrix is 2x2 for binary classification
         if cm.shape == (2, 2):
             tn, fp, fn, tp = cm.ravel()
         else:
-            raise ValueError(f"Unexpected confusion matrix shape: {cm.shape}. Expected (2, 2) for binary classification.")
+            raise ValueError(
+                f"Unexpected confusion matrix shape: {cm.shape}. Expected shape: (2, 2) for binary classification.")
+
+        # Aggregate FP, FN, TP, and TN
+        total_fp = fp
+        total_fn = fn
+        total_tp = tp
+        total_tn = tn
+
+        # Total classifications
+        total_classifications = cm.sum()
+
+        # Print metrics
+        print(f"Retrained IDS - Accuracy: {accuracy:.4f}%, Precision: {precision:.4f}%, Recall: {recall:.4f}%, F1-Score: {f1:.4f}%")
+        print(f"Balanced Accuracy: {balanced_accuracy:.4f}%, MCC: {mcc:.4f}")
+        print(f"Total Classifications: {total_classifications}")
+        print("\n--- Confusion Matrix Metrics ---")
+        print(f"True Positives (TP): {total_tp}")
+        print(f"False Positives (FP): {total_fp}")
+        print(f"True Negatives (TN): {total_tn}")
+        print(f"False Negatives (FN): {total_fn}")
         print("\nConfusion Matrix:")
         print(cm)
 
-        # (Ulteriori visualizzazioni (ROC, Precision-Recall, ecc.) possono essere decommentate se necessarie)
-        # fpr, tpr, _ = roc_curve(labels, predictions)
-        # roc_auc = auc(fpr, tpr)
-        # plot_roc_curve(fpr, tpr, roc_auc)
-        # precision_vals, recall_vals, _ = precision_recall_curve(labels, predictions)
-        # plot_precision_recall_curve(recall_vals, precision_vals)
-        # visualize_single_dim_embeddings(embeddings, labels)
-        # plot_degree_distribution(graph_data)
+        # Visualization
+        #embeddings = gnn_model(graph_data.x, graph_data.edge_index).detach().numpy()
+        #visualize_single_dim_embeddings(embeddings, labels)
+        #plot_degree_distribution(graph_data)
 
-# ------------------------- VISUALIZZAZIONI FINALI -------------------------
 
-# Ad esempio, visualizzazione del learning rate per l'agente RL (XGBIDS non utilizza uno scheduler)
+#for metric_name, metric_values in ids_metrics.items():
+    #plot_metric(metric_values, metric_name, recorded_episodes)
+# Final visualizations
+#plot_traffic_distribution(env.benign, env.malicious)
+#plot_rewards(episodic_rewards)
+#plot_agent_loss(agents_losses)
+plot_learning_rate(gnn_lr, "GNN")
 plot_learning_rate(agent_lr, "RL Agent")
-# plot_rewards(episodic_rewards)
-# plot_traffic_distribution(env.benign, env.malicious)

@@ -4,728 +4,118 @@ from sklearn.neighbors import kneighbors_graph
 from sklearn.metrics.pairwise import euclidean_distances
 import random
 
+
 class NetworkEnvironment:
-    def __init__(self, gnn_model,k_neighbors=5):
+    def __init__(self, gnn_model):
         self.gnn_model = gnn_model
-        self.state_size = 13  # Example state size (node feature size)
-        self.action_size = 2 # Example actions
-        self.k_neighbors = k_neighbors  # Number of neighbors for k-NN
+        self.state_size = 13  # example state size
+        # Change action_size from 2 to 4:
+        # 0 = benign; 1 = low-intensity malicious; 2 = medium; 3 = high
+        self.action_size = 4
+        self.k_neighbors = 5
         self.current_state = self.reset()
-        # Attributes for storing traffic data and labels
         self.traffic_data = []
         self.labels = []
-        #print("Initialized traffic data:")
-        #for i, node in enumerate(self.traffic_data):
-            #print(f"  Node {i}: {node}")
         self.benign = 0
         self.malicious = 0
-        # To store relationships between traffic instances (for edges)
         self.edges = []
 
     def reset(self):
         self.current_state = np.random.rand(self.state_size)
         return self.current_state
 
-    def step_old(self, action):
-        # Generate traffic features based on the action
-        traffic_features = self.generate_traffic(action)
-        traffic_features = traffic_features.copy()  # Ensure no negative strides
-        #is_malicious = action != 0  # Define maliciousness based on action
-        is_malicious = action >= 12
-
-        # Store traffic data and labels
-        self.traffic_data.append(traffic_features)
-        self.labels.append(float(is_malicious))
-
-        # Ensure the node feature tensor and edge index are compatible
-        x = torch.tensor(np.array(self.traffic_data), dtype=torch.float32)
-        edge_index = self.get_edge_index()
-
-        # Evaluate with GNN model
-        detection_result = self.gnn_model(x, edge_index)[-1]  # Output for the latest node
-
-        # Calculate current traffic distribution (benign vs malicious)
-        benign_count = self.labels.count(0)
-        malicious_count = self.labels.count(1)
-        total_count = benign_count + malicious_count
-
-        #print(f"DEBUG: Benign Traffic: {benign_count}, Malicious Traffic: {malicious_count}")
-
-        # Reward calculation
-        if is_malicious:
-            if detection_result <= 0.5:
-                reward = 25  # High reward for evading detection
-            else:
-                reward = -10  # High penalty for being detected
-        else:
-            if detection_result > 0.5:
-                reward = 0  # Penalty if benign traffic is misclassified as malicious
-            else:
-                reward = 15  # Reward for correctly classifying benign traffic as benign
-
-        # Define whether the episode should end
-        done = False  # Modify as needed for a termination condition
-        next_state = np.random.rand(self.state_size)
-        return next_state, reward, done, {}
-
-    def step_fullyconnected(self, action):
-        # Generate traffic features based on the action
-        traffic_features = self.generate_traffic(action)
-        traffic_features = traffic_features.copy()  # Ensure no negative strides
-        is_malicious = action >= 12  # Define maliciousness based on action
-
-        # Store traffic data and labels
-        self.traffic_data.append(traffic_features)
-        self.labels.append(float(is_malicious))
-
-        # Ensure at least two nodes are present
-        if len(self.traffic_data) < 2:
-            print("Insufficient nodes for edge generation. Adding dummy node...")
-            dummy_features = [0] * len(traffic_features)  # Example: zero-filled dummy node
-            self.traffic_data.append(dummy_features)
-            self.labels.append(0.0)  # Dummy label
-
-        # Debug: Print current traffic data
-        #print(f"Current traffic data (len={len(self.traffic_data)}):")
-        #for i, node in enumerate(self.traffic_data):
-            #print(f"  Node {i}: {node}")
-
-        # Ensure the node feature tensor and edge index are compatible
-        x = torch.tensor(np.array(self.traffic_data), dtype=torch.float32)
-        edge_index = self.get_edge_index()
-        #print(f"edge_index: {edge_index}")
-
-        # Evaluate with GNN model
-        detection_result = torch.sigmoid(self.gnn_model(x, edge_index))  # Remove indexing [-1]
-        #print(f"detection_result: {detection_result}")
-
-        # Ensure detection_result is scalar
-        if detection_result.numel() == 1:
-            detection_result = detection_result.item()  # Convert single tensor to scalar
-        else:
-            detection_result = detection_result.mean().item()  # Aggregate to scalar if necessary
-
-        #print(f"detection_result: {detection_result}")
-
-        # Calculate current traffic distribution (benign vs malicious)
-        benign_count = self.labels.count(0)
-        malicious_count = self.labels.count(1)
-        total_count = benign_count + malicious_count
-
-        # Reward balancing factor
-        if total_count > 0:
-            benign_ratio = benign_count / total_count
-            malicious_ratio = malicious_count / total_count
-        else:
-            benign_ratio = 0.5  # Default values if no traffic yet
-            malicious_ratio = 0.5
-
-        # Debug: Print traffic generation distribution
-        #print(f"DEBUG: Benign Traffic: {benign_count}, Malicious Traffic: {malicious_count}")
-
-        # Baseline rewards
-        benign_correct_reward = 15
-        benign_incorrect_penalty = -1
-        malicious_correct_penalty = -5
-        malicious_incorrect_reward = 25
-
-        # Adjust rewards based on traffic imbalance
-        imbalance_factor = 1 - abs(benign_ratio - malicious_ratio)  # Closer to 1 means balanced
-        benign_correct_reward *= imbalance_factor
-        benign_incorrect_penalty *= imbalance_factor
-        malicious_correct_penalty *= imbalance_factor
-        malicious_incorrect_reward *= imbalance_factor
-
-        # Reward calculation
-        if is_malicious:
-            if detection_result <= 0.5:
-                reward = malicious_incorrect_reward  # Reward for evading detection
-            else:
-                reward = malicious_correct_penalty  # Penalty for being detected
-        else:
-            if detection_result > 0.5:
-                reward = benign_incorrect_penalty  # Penalty for misclassifying benign traffic
-            else:
-                reward = benign_correct_reward  # Reward for correctly classifying benign traffic
-
-        # Define whether the episode should end
-        done = False  # Modify as needed for a termination condition
-        next_state = np.random.rand(self.state_size)
-        return next_state, reward, done, {}
-
-    def stepSkewed(self, action):
-        # Use the agent's action to decide the traffic type
-        is_malicious = action == 1  # Assuming action 0: benign, 1: malicious
-        traffic_features = self.generate_traffic(action)
-
-        # Append the generated traffic to the environment's state
-        self.traffic_data.append(traffic_features)
-        self.labels.append(is_malicious)
-
-        # Evaluate traffic with the GNN
-        traffic_data_np = np.array(self.traffic_data, dtype=np.float32)
-        x = torch.from_numpy(traffic_data_np)
-        edge_index = self.get_edge_index()
-        #detection_result = self.gnn_model(x, edge_index)[-1]
-        detection_result = torch.sigmoid(self.gnn_model(x, edge_index))[-1]  # Use sigmoid for consistency
-
-        # Ensure detection_result is scalar
-        if detection_result.numel() == 1:
-            detection_result = detection_result.item()
-        else:
-            detection_result = detection_result.mean().item()
-
-        # Calculate current traffic distribution (benign vs malicious)
-        benign_count = self.labels.count(0)
-        malicious_count = self.labels.count(1)
-        total_count = benign_count + malicious_count
-        self.benign += benign_count
-        self.malicious += malicious_count
-
-        # Reward balancing factor
-        if total_count > 0:
-            benign_ratio = benign_count / total_count
-            malicious_ratio = malicious_count / total_count
-        else:
-            benign_ratio = 0.5  # Default values if no traffic yet
-            malicious_ratio = 0.5
-
-        # Baseline rewards
-        benign_correct_reward = 15
-        benign_incorrect_penalty = -1
-        malicious_correct_penalty = -10
-        malicious_incorrect_reward = 25
-
-        # Adjust rewards based on traffic imbalance
-        imbalance_factor = 1 - abs(benign_ratio - malicious_ratio)  # Closer to 1 means balanced
-        benign_correct_reward *= imbalance_factor
-        benign_incorrect_penalty *= imbalance_factor
-        malicious_correct_penalty *= imbalance_factor
-        malicious_incorrect_reward *= imbalance_factor
-
-        # Reward calculation
-        if is_malicious:
-            if detection_result <= 0.5:
-                reward = malicious_incorrect_reward  # Reward for evading detection
-            else:
-                reward = malicious_correct_penalty  # Penalty for being detected
-        else:
-            if detection_result > 0.5:
-                reward = benign_incorrect_penalty  # Penalty for misclassifying benign traffic
-            else:
-                reward = benign_correct_reward  # Reward for correctly classifying benign traffic
-
-        # Define whether the episode should end
-        done = len(self.traffic_data) > 5000  # Example termination condition
-        next_state = np.random.rand(self.state_size)
-        return next_state, reward, done, {}
-
     def step(self, action):
-        is_malicious = action == 1  # 0: benign, 1: malicious
+        # Action now indicates the intensity level.
+        is_malicious = (action != 0)
         traffic_features = self.generate_traffic(action)
-
-        # Append the new traffic instance and label
         self.traffic_data.append(traffic_features)
         self.labels.append(is_malicious)
 
-        # Evaluate traffic with the GNN
+        # Evaluate traffic using the IDS (e.g. your RFIDS instance)
         traffic_data_np = np.array(self.traffic_data, dtype=np.float32)
         x = torch.from_numpy(traffic_data_np)
         edge_index = self.get_edge_index()
-        # Use sigmoid to get a probability-like output from the IDS
         detection_result = torch.sigmoid(self.gnn_model(x, edge_index))[-1]
-
-        if detection_result.numel() == 1:
-            detection_result = detection_result.item()
-        else:
+        if detection_result.numel() > 1:
             detection_result = detection_result.mean().item()
-
-        #Sliding window for imbalance calculation -----
-        window_size = 1000
-        recent_labels = self.labels[-min(len(self.labels), window_size):]
-        benign_count = recent_labels.count(0)
-        malicious_count = recent_labels.count(1)
-        total_count = benign_count + malicious_count
-
-        if total_count > 0:
-            benign_ratio = benign_count / total_count
-            malicious_ratio = malicious_count / total_count
         else:
-            benign_ratio = 0.5
-            malicious_ratio = 0.5
+            detection_result = detection_result.item()
 
-        imbalance_factor = 1 - abs(benign_ratio - malicious_ratio)
-
-        benign_correct_reward    = 15 * imbalance_factor
-        benign_incorrect_penalty = -10 * imbalance_factor  # increased penalty for false positives
-        malicious_correct_penalty= -20 * imbalance_factor  # increased penalty for detected malicious traffic
-        malicious_incorrect_reward = 25 * imbalance_factor
-
+        # --- Revised Reward Structure ---
+        # For malicious traffic, we want the IDS to be uncertain (detection near 0.5) so that
+        # the agent is rewarded for “camouflaging” its traffic.
         if is_malicious:
-            # For malicious traffic, if the IDS fails to flag it reward the agent but if flagged, penalize
-            if detection_result <= 0.6:
-                reward = malicious_incorrect_reward  # Reward for evading detection
-            else:
-                reward = malicious_correct_penalty  # Penalty for being detected
+            # Reward peaks when detection_result is 0.5; falls off if too low or too high.
+            reward = 35 - 50 * abs(detection_result - 0.5)
         else:
-            if detection_result > 0.6:
-                reward = benign_incorrect_penalty  # Penalty for misclassifying benign traffic
-            else:
-                reward = benign_correct_reward  # Reward for correct classification
+            # For benign traffic, reward highest when detection_result is near 0.
+            reward = 15 - 30 * abs(detection_result - 0.0)
+        # -----------------------------------
 
-        #print(f"Debug: benign_ratio={benign_ratio:.2f}, imbalance_factor={imbalance_factor:.2f}")
-
-        # Terminate episode if too many traffic samples have been collected
-        done = len(self.traffic_data) > 5000
+        done = len(self.traffic_data) > 5000  # termination condition
         next_state = np.random.rand(self.state_size)
         return next_state, reward, done, {}
-
-    def generate_traffic_old(self, action):
-        # Generate basic traffic features
-        if action == 0:  # Normal traffic
-            features = np.random.rand(10) * 0.5
-        elif action == 1:  # Flood attack
-            features = np.random.rand(10) + 1
-        elif action == 2:  # Malformed packets
-            features = np.random.rand(10) * np.random.randint(1, 10)
-        elif action == 3:  # Timing anomalies
-            features = np.sort(np.random.rand(10))[::-1]
-        elif action == 4:  # Protocol anomalies
-            features = np.random.choice([0, 1], size=10)
-
-        # Add augmented features
-        packet_size = np.random.uniform(50, 1500)  # Simulated packet size (bytes)
-        protocol_type = np.random.choice([0, 1, 2])  # 0: TCP, 1: UDP, 2: ICMP
-        temporal_pattern = np.random.uniform(0, 1)  # Random temporal feature
-
-        # Combine original features with augmented features
-        return np.concatenate([features, [packet_size, protocol_type, temporal_pattern]])
-
-    def map_action_to_generate(action1):
-        if action1 == 0:
-            return 0
-        else:
-            return random.randint(12, 23)
 
     def generate_traffic(self, action):
         """
-        Generate realistic network traffic features based on the chosen action.
-
-        Args:
-            action (int): Represents the type of traffic (0 for normal, 1-12 for malicious).
-
-        Returns:
-            np.ndarray: A feature vector representing a single traffic instance.
-        """
-
-        def map_action_to_generate(action1):
-            if action1 == 0:
-                return 0
-            else:
-                return random.randint(12, 28)
-
-        action = map_action_to_generate(action)
-        # Shared feature generation logic
-        base_features = {
-            "Dst Port": np.random.randint(1, 65536),  # Random destination port
-            "Flow Duration": np.random.uniform(50, 5000),  # Duration in ms
-            "Tot Fwd Pkts": np.random.randint(1, 1000),  # Total forwarded packets
-            "TotLen Fwd Pkts": np.random.uniform(0, 1e6),  # Total length of forwarded packets
-            "Flow Byts/s": np.random.uniform(0, 1e5),  # Bytes per second
-            "Fwd Pkt Len Max": np.random.uniform(20, 1500),  # Max length of forward packets
-            "Protocol": np.random.choice([6, 17, 1]),  # TCP, UDP, ICMP
-            "Flow Pkts/s": np.random.uniform(0, 1e3),  # Packets per second
-            "ACK Flag Cnt": np.random.randint(0, 10),  # ACK flag count
-            "SYN Flag Cnt": np.random.randint(0, 10),  # SYN flag count
-            "Fwd IAT Mean": np.random.uniform(0, 1e3),  # Inter-arrival time mean
-            "Init Fwd Win Byts": np.random.uniform(0, 1e5),  # Initial forward window bytes
-            "Active Mean": np.random.uniform(0, 1e3),  # Active duration mean
-        }
-
-        if action == 0:  # Benign traffic
-            features = base_features
-        elif action >= 12:  # Malicious traffic
-            features = base_features.copy()
-            # Modify features to mimic malicious traffic
-            if action == 12:  # Flood attack
-                features.update({
-                    "Flow Byts/s": np.random.uniform(1e5, 1e6),
-                    "Flow Pkts/s": np.random.uniform(1e3, 1e4),
-                    "SYN Flag Cnt": np.random.randint(10, 50),
-                })
-            elif action == 13:  # DoS Hulk attack
-                features.update({
-                    "Flow Duration": np.random.uniform(1, 100),
-                    "Flow Byts/s": np.random.uniform(1e5, 1e6),
-                    "SYN Flag Cnt": np.random.randint(20, 100),
-                })
-            elif action == 14:  # Malformed packets
-                features.update({
-                    "Fwd Pkt Len Max": np.random.uniform(0, 50),
-                    "ACK Flag Cnt": 0,
-                    "TotLen Fwd Pkts": np.random.uniform(0, 500),
-                })
-            elif action == 15:  # Timing anomalies
-                features.update({
-                    "Flow Duration": np.random.uniform(500, 5000),
-                    "Flow Byts/s": np.random.uniform(0, 1e3),
-                    "Fwd IAT Mean": np.random.uniform(1e3, 1e4),
-                })
-            elif action == 16:  # Protocol anomalies
-                features.update({
-                    "Protocol": np.random.choice([3, 4, 5]),  # Anomalous protocol
-                    "Fwd Pkt Len Max": np.random.uniform(1000, 1500),
-                    "Flow Byts/s": np.random.uniform(0, 1e4),
-                })
-            elif action == 17:  # Bot attack
-                features.update({
-                    "Dst Port": np.random.choice([22, 80, 443]),  # Common botnet targets
-                    "Tot Fwd Pkts": np.random.randint(100, 1000),
-                    "Flow Byts/s": np.random.uniform(1e5, 1e6),
-                })
-            elif action == 18:  # Brute Force - Web attack
-                features.update({
-                    "Dst Port": 80,  # HTTP port
-                    "Tot Fwd Pkts": np.random.randint(50, 300),  # Frequent small bursts
-                    "Flow Byts/s": np.random.uniform(1e3, 1e4),
-                    "ACK Flag Cnt": np.random.randint(0, 5),
-                    "SYN Flag Cnt": np.random.randint(5, 20),
-                })
-            elif action == 19:  # Brute Force - XSS attack
-                features.update({
-                    "Dst Port": np.random.choice([80, 443]),  # Target HTTP or HTTPS
-                    "TotLen Fwd Pkts": np.random.uniform(1e3, 5e4),  # Larger payloads
-                    "Flow Byts/s": np.random.uniform(1e3, 1e5),
-                    "Fwd IAT Mean": np.random.uniform(100, 1000),
-                })
-            elif action == 20:  # Infiltration attack
-                features.update({
-                    "Dst Port": np.random.randint(1, 65536),  # Random ports
-                    "Protocol": np.random.choice([1, 6, 17]),  # ICMP, TCP, UDP
-                    "Active Mean": np.random.uniform(10, 100),  # Short active periods
-                    "Tot Fwd Pkts": np.random.randint(1, 50),
-                })
-            elif action == 21:  # SQL Injection attack
-                features.update({
-                    "Dst Port": 3306,  # MySQL port
-                    "TotLen Fwd Pkts": np.random.uniform(1e3, 1e5),
-                    "Flow Byts/s": np.random.uniform(1e3, 1e5),
-                    "ACK Flag Cnt": np.random.randint(1, 10),
-                })
-            elif action == 22:  # SSH BruteForce attack
-                features.update({
-                    "Dst Port": 22,  # SSH port
-                    "Tot Fwd Pkts": np.random.randint(10, 500),
-                    "Flow Byts/s": np.random.uniform(1e3, 1e5),
-                    "SYN Flag Cnt": np.random.randint(5, 30),
-                })
-            elif action == 23:  # DoS SlowHTTP attack
-                features.update({
-                    "Dst Port": np.random.choice([80, 443]),  # HTTP/HTTPS
-                    "Flow Duration": np.random.uniform(1e3, 1e4),  # Long duration
-                    "Flow Byts/s": np.random.uniform(1, 1e3),  # Very low throughput
-                    "Active Mean": np.random.uniform(10, 500),  # Prolonged active period
-                })
-            elif action == 24:  # Man-in-the-Middle (MitM) Attack
-                features.update({
-                    "Dst Port": np.random.randint(1, 65536),  # Random port to intercept communications
-                    "Flow Duration": np.random.uniform(100, 1000),  # Moderate duration
-                    "Tot Fwd Pkts": np.random.randint(10, 200),  # Moderate packet count
-                    "TotLen Fwd Pkts": np.random.uniform(1e3, 5e4),  # Moderate total length
-                    "Flow Byts/s": np.random.uniform(1e3, 1e5),  # Moderate byte rate
-                    "Fwd Pkt Len Max": np.random.uniform(100, 1500),  # Variable packet length
-                    "Protocol": np.random.choice([6, 17]),  # TCP or UDP
-                    "Flow Pkts/s": np.random.uniform(10, 500),  # Moderate packet rate
-                    "ACK Flag Cnt": np.random.randint(0, 10),  # Variable ACK count
-                    "SYN Flag Cnt": np.random.randint(0, 10),  # Variable SYN count
-                    "Fwd IAT Mean": np.random.uniform(10, 500),  # Moderate inter-arrival time
-                    "Init Fwd Win Byts": np.random.uniform(1e3, 1e5),  # Variable window size
-                    "Active Mean": np.random.uniform(10, 500),  # Moderate active duration
-                })
-            elif action == 25:  # Phishing Attack
-                features.update({
-                    "Dst Port": np.random.choice([25, 587, 465]),  # SMTP ports
-                    "Flow Duration": np.random.uniform(50, 500),  # Short duration
-                    "Tot Fwd Pkts": np.random.randint(1, 50),  # Few packets
-                    "TotLen Fwd Pkts": np.random.uniform(500, 5e3),  # Small total length
-                    "Flow Byts/s": np.random.uniform(1e2, 1e4),  # Low byte rate
-                    "Fwd Pkt Len Max": np.random.uniform(100, 500),  # Small packet length
-                    "Protocol": 6,  # TCP
-                    "Flow Pkts/s": np.random.uniform(1, 100),  # Low packet rate
-                    "ACK Flag Cnt": np.random.randint(0, 5),  # Low ACK count
-                    "SYN Flag Cnt": np.random.randint(0, 5),  # Low SYN count
-                    "Fwd IAT Mean": np.random.uniform(50, 500),  # Moderate inter-arrival time
-                    "Init Fwd Win Byts": np.random.uniform(1e3, 1e4),  # Small window size
-                    "Active Mean": np.random.uniform(10, 100),  # Short active duration
-                })
-            elif action == 26:  # Ransomware Attack
-                features.update({
-                    "Dst Port": np.random.choice([445, 139]),  # SMB ports
-                    "Flow Duration": np.random.uniform(500, 5000),  # Longer duration
-                    "Tot Fwd Pkts": np.random.randint(100, 1000),  # High packet count
-                    "TotLen Fwd Pkts": np.random.uniform(1e4, 1e6),  # Large total length
-                    "Flow Byts/s": np.random.uniform(1e4, 1e6),  # High byte rate
-                    "Fwd Pkt Len Max": np.random.uniform(500, 1500),  # Large packet length
-                    "Protocol": 6,  # TCP
-                    "Flow Pkts/s": np.random.uniform(100, 1000),  # High packet rate
-                    "ACK Flag Cnt": np.random.randint(10, 50),  # High ACK count
-                    "SYN Flag Cnt": np.random.randint(10, 50),  # High SYN count
-                    "Fwd IAT Mean": np.random.uniform(1, 100),  # Short inter-arrival time
-                    "Init Fwd Win Byts": np.random.uniform(1e4, 1e5),  # Large window size
-                    "Active Mean": np.random.uniform(100, 1000),  # Long active duration
-                })
-            elif action == 27:  # DNS Spoofing Attack
-                features.update({
-                    "Dst Port": 53,  # DNS port
-                    "Flow Duration": np.random.uniform(10, 100),  # Very short duration
-                    "Tot Fwd Pkts": np.random.randint(1, 10),  # Few packets
-                    "TotLen Fwd Pkts": np.random.uniform(100, 1e3),  # Small total length
-                    "Flow Byts/s": np.random.uniform(1e3, 1e4),  # Moderate byte rate
-                    "Fwd Pkt Len Max": np.random.uniform(50, 500),  # Small packet length
-                    "Protocol": 17,  # UDP
-                    "Flow Pkts/s": np.random.uniform(10, 100),  # Moderate packet rate
-                    "ACK Flag Cnt": 0,  # No ACKs in UDP
-                    "SYN Flag Cnt": 0,  # No SYNs in UDP
-                    "Fwd IAT Mean": np.random.uniform(1, 10),  # Very short inter-arrival time
-                    "Init Fwd Win Byts": 0,  # Not applicable for UDP
-                    "Active Mean": np.random.uniform(1, 10),  # Very short active duration
-                })
-            elif action == 28:  # ARP Spoofing Attack
-                features.update({
-                    "Dst Port": 0,  # ARP operates at Layer 2 and does not involve ports
-                    "Flow Duration": np.random.uniform(10, 100),  # Very short duration
-                    "Tot Fwd Pkts": np.random.randint(1, 10),  # Very few packets
-                    "TotLen Fwd Pkts": np.random.uniform(28, 1500),  # ARP packet size range
-                    "Flow Byts/s": np.random.uniform(1e3, 1e4),  # Moderate byte rate
-                    "Fwd Pkt Len Max": np.random.uniform(28, 60),  # Typical ARP request/reply size
-                    "Protocol": 0,  # Protocol number 0 for "none" (ARP is a Layer 2 protocol)
-                    "Flow Pkts/s": np.random.uniform(10, 200),  # Moderate packet rate during flooding
-                    "ACK Flag Cnt": 0,  # No ACKs in ARP
-                    "SYN Flag Cnt": 0,  # No SYNs in ARP
-                    "Fwd IAT Mean": np.random.uniform(1, 10),  # Very short inter-arrival time
-                    "Init Fwd Win Byts": 0,  # Not applicable for ARP
-                    "Active Mean": np.random.uniform(1, 10),  # Very short active duration
-                })
-
-        return np.array(list(features.values()))
-
-    def map_to_action(self, action):
-        """
-        Maps a potentially infinite action to a finite set of predefined behaviors.
-
-        Args:
-            action (int): The input action (can be any integer).
-
-        Returns:
-            int: A mapped action within a finite range.
-        """
-        if action < 12:
-            return action  # Benign actions (0-11)
-        else:
-            return 12 + (action % 6)  # Maps malicious actions to types 12-17
-
-    def generate_trafficooo(self, action):
-        """
         Generate network traffic features based on the chosen action.
+          - action == 0: Generate benign traffic.
+          - action in {1,2,3}: Generate malicious traffic with increasing intensity.
 
-        Args:
-            action (int): Represents the type of traffic (0-11 for benign, 12+ for malicious).
-
-        Returns:
-            np.ndarray: A feature vector representing a single traffic instance.
+        The method first generates a benign baseline sample (with small noise).
+        For malicious traffic, a subset of features is perturbed by an amount that increases
+        with the intensity level, so that the malicious samples overlap with benign ones.
         """
-        # Map the input action to a finite set of behaviors
-        action = self.map_to_action(action)
-
-        # Base features (common to all traffic)
-        features = {
-            "flow_duration": np.random.uniform(50, 5000),  # Flow duration in ms
-            "packet_size_mean": np.random.uniform(60, 1200),  # Mean packet size (bytes)
-            "packet_size_std": np.random.uniform(10, 300),  # Std dev of packet sizes
-            "flow_bytes_sent": np.random.uniform(1000, 100000),  # Total bytes sent
-            "flow_bytes_received": np.random.uniform(500, 80000),  # Total bytes received
-            "flow_packet_rate": np.random.uniform(10, 100),  # Packets per second
-            "protocol": np.random.choice([0, 1, 2]),  # TCP, UDP, ICMP
-            "flags": np.random.choice([0, 1]),  # SYN/ACK flags
-            "ttl": np.random.uniform(30, 128),  # Time-to-live
-            "header_length": np.random.uniform(20, 60),  # Header length
-            "payload_length": np.random.uniform(0, 1500),  # Payload size
-            "is_encrypted": np.random.choice([0, 1]),  # Encrypted traffic
-            "connection_state": np.random.choice([0, 1, 2]),  # Established, Reset, etc.
+        # Define a baseline (benign) sample.
+        base_features = {
+            "Dst Port": np.random.randint(1, 65536),
+            "Flow Duration": np.random.uniform(50, 5000),
+            "Tot Fwd Pkts": np.random.randint(1, 1000),
+            "TotLen Fwd Pkts": np.random.uniform(0, 1e6),
+            "Flow Byts/s": np.random.uniform(0, 1e5),
+            "Fwd Pkt Len Max": np.random.uniform(20, 1500),
+            "Protocol": np.random.choice([6, 17, 1]),
+            "Flow Pkts/s": np.random.uniform(0, 1e3),
+            "ACK Flag Cnt": np.random.randint(0, 10),
+            "SYN Flag Cnt": np.random.randint(0, 10),
+            "Fwd IAT Mean": np.random.uniform(0, 1e3),
+            "Init Fwd Win Byts": np.random.uniform(0, 1e5),
+            "Active Mean": np.random.uniform(0, 1e3),
         }
+        # Add a small noise to the benign baseline.
+        benign_sample = {k: v * np.random.uniform(0.99, 1.0) for k, v in base_features.items()}
 
-        if action < 12:  # Benign traffic
-            # Introduce slight feature variations for benign traffic
-            features.update({
-                "flow_duration": np.random.uniform(200, 3000),
-                "packet_size_mean": np.random.uniform(100, 800),
-                "flow_bytes_sent": np.random.uniform(2000, 50000),
-                "flow_packet_rate": np.random.uniform(20, 200),
-            })
-        else:  # Malicious traffic
-            # Modify features to mimic malicious behavior patterns
-            attack_type = action % 6
+        if action == 0:
+            # Return benign sample.
+            return np.array(list(benign_sample.values()))
+        else:
+            # For malicious traffic, determine intensity (1 -> ~0.33, 2 -> ~0.67, 3 -> 1.0)
+            intensity = action / 3.0
+            features = benign_sample.copy()
+            # Define a set of features that will be perturbed.
+            perturbable = ["Flow Byts/s", "Flow Pkts/s", "Fwd Pkt Len Max",
+                           "SYN Flag Cnt", "Tot Fwd Pkts", "TotLen Fwd Pkts"]
+            for feat in perturbable:
+                # Multiply by a factor chosen uniformly between (1 - 0.5*intensity) and (1 + 0.5*intensity)
+                factor = np.random.uniform(1 - intensity * 0.5, 1 + intensity * 0.5)
+                features[feat] = features[feat] * factor
+                if features[feat] < 0:
+                    features[feat] = 0
+            # With some probability, change the protocol (to simulate atypical behavior).
+            if np.random.rand() < 0.3:
+                features["Protocol"] = np.random.choice([3, 4, 5])
+            return np.array(list(features.values()))
 
-            if attack_type == 0:  # Flood attack
-                features.update({
-                    "flow_duration": np.random.uniform(1, 50),
-                    "packet_size_mean": np.random.uniform(800, 1500),
-                    "flow_bytes_sent": np.random.uniform(50000, 500000),
-                    "flow_packet_rate": np.random.uniform(500, 5000),
-                    "protocol": 1,  # Likely UDP
-                    "ttl": np.random.uniform(10, 30),
-                })
-            elif attack_type == 1:  # Timing anomalies
-                features.update({
-                    "flow_duration": np.random.uniform(500, 5000),
-                    "flow_packet_rate": np.random.uniform(1, 20),
-                    "packet_size_mean": np.random.uniform(50, 500),
-                    "packet_size_std": np.random.uniform(50, 150),
-                })
-            elif attack_type == 2:  # Malformed packets
-                features.update({
-                    "packet_size_mean": np.random.uniform(1, 50),
-                    "packet_size_std": np.random.uniform(100, 300),
-                    "flow_bytes_sent": np.random.uniform(100, 10000),
-                    "flow_bytes_received": np.random.uniform(50, 5000),
-                    "payload_length": np.random.uniform(0, 100),
-                    "flags": 1,  # Abnormal flag usage
-                })
-            elif attack_type == 3:  # Protocol anomalies
-                features.update({
-                    "protocol": np.random.choice([3, 4, 5]),  # Anomalous protocols
-                    "flow_bytes_sent": np.random.uniform(5000, 100000),
-                    "flow_bytes_received": np.random.uniform(2000, 80000),
-                    "payload_length": np.random.uniform(0, 1500),
-                    "connection_state": 2,  # Rare state transitions
-                })
-            elif attack_type == 4:  # Slow HTTP attack
-                features.update({
-                    "flow_duration": np.random.uniform(1000, 10000),  # Long duration
-                    "packet_size_mean": np.random.uniform(100, 300),  # Small packets
-                    "flow_bytes_sent": np.random.uniform(100, 1000),
-                    "flow_packet_rate": np.random.uniform(0.1, 5),  # Low rate
-                    "payload_length": np.random.uniform(0, 100),  # Minimal payload
-                    "flags": 0,  # Unusual flag usage
-                })
-            elif attack_type == 5:  # Brute force login attack
-                features.update({
-                    "flow_duration": np.random.uniform(50, 500),
-                    "packet_size_mean": np.random.uniform(400, 1000),
-                    "flow_bytes_sent": np.random.uniform(10000, 200000),
-                    "flow_bytes_received": np.random.uniform(5000, 100000),
-                    "flow_packet_rate": np.random.uniform(100, 1000),  # High rate
-                    "protocol": 0,  # Likely TCP
-                    "is_encrypted": 1,  # Encrypted traffic
-                })
-
-        # Introduce temporal noise to simulate real-world dynamics
-        for key in ["flow_bytes_sent", "flow_bytes_received", "packet_size_mean"]:
-            features[key] *= (1 + np.random.uniform(-0.1, 0.1))  # Add 10% noise
-
-        # Normalize features for model compatibility
-        feature_values = np.array(list(features.values()))
-        normalized_features = (feature_values - feature_values.mean()) / (feature_values.std() + 1e-8)
-
-        return normalized_features
-
-    def get_edge_index_fullyconnected(self):
-        num_nodes = len(self.traffic_data)
-        edges = []
-        #print("Traffic data before generating edges:")
-        #for i, node in enumerate(self.traffic_data):
-            #print(f"  Node {i}: {node}")
-
-        for i in range(num_nodes):
-            for j in range(num_nodes):
-                if i != j:
-                    # Extract features for nodes i and j
-                    node_i = self.traffic_data[i]
-                    node_j = self.traffic_data[j]
-
-                    # Protocol similarity
-                    protocol_similarity = node_i[-2] == node_j[-2]
-                    temporal_proximity = abs(node_i[-1] - node_j[-1]) < 0.2
-                    volume_similarity = abs(node_i[3] - node_j[3]) < 5000 and abs(node_i[4] - node_j[4]) < 5000
-                    flow_similarity = abs(node_i[1] - node_j[1]) < 50 and abs(node_i[2] - node_j[2]) < 20
-                    behavioral_similarity = node_i[7] == node_j[7] and node_i[12] == node_j[12]
-
-                    # Debug: Print conditions
-                    #print(f"Node {i} vs Node {j}: Protocol {protocol_similarity}, Temporal {temporal_proximity}, "
-                          #f"Volume {volume_similarity}, Flow {flow_similarity}, Behavior {behavioral_similarity}")
-
-                    # Create an edge if any of the above conditions are true
-                    if protocol_similarity or temporal_proximity or volume_similarity:
-                        edges.append((i, j))
-
-        #print(f"Generated edges: {edges}")
-        if not edges:
-            return torch.empty((2, 0), dtype=torch.long)  # No edges
-
-        edge_index = torch.tensor(edges, dtype=torch.long).t()
-        return edge_index
-
-
-    def get_edge_indexNoEmpyNodeCheck(self, k=5, distance_threshold=10.0):
-        """
-        Generates edge indices based on k-nearest neighbors and a distance threshold.
-
-        Args:
-            k (int): Number of nearest neighbors.
-            distance_threshold (float): Maximum distance to include an edge.
-
-        Returns:
-            torch.Tensor: Edge index in PyTorch Geometric format.
-        """
-        num_nodes = len(self.traffic_data)
-        if num_nodes < 2:
-            return torch.empty((2, 0), dtype=torch.long)  # No edges possible
-
-        # Adjust k to avoid ValueError
-        adjusted_k = min(k, num_nodes - 1)
-
-        # Compute k-NN graph
-        features = np.array(self.traffic_data)
-        knn_graph = kneighbors_graph(features, n_neighbors=adjusted_k, mode="connectivity", include_self=False)
-        distances = euclidean_distances(features)
-
-        # Apply distance threshold
-        row, col = knn_graph.nonzero()
-        valid_edges = [(i, j) for i, j in zip(row, col) if distances[i, j] <= distance_threshold]
-
-        # Convert to PyTorch edge_index format
-        edge_index = torch.tensor(valid_edges, dtype=torch.long).t() if valid_edges else torch.empty((2, 0),
-                                                                                                     dtype=torch.long)
-
-        return edge_index
-
-    def get_edge_index(self, k=5, distance_threshold=10.0):
+    def get_edge_index(self, k=8, distance_threshold=10.0):
         num_nodes = len(self.traffic_data)
         if num_nodes < 2:
             return torch.empty((2, 0), dtype=torch.long)
-
         adjusted_k = min(k, num_nodes - 1)
         features = np.array(self.traffic_data)
         knn_graph = kneighbors_graph(features, n_neighbors=adjusted_k, mode="connectivity", include_self=False)
         distances = euclidean_distances(features)
         row, col = knn_graph.nonzero()
         valid_edges = [(i, j) for i, j in zip(row, col) if distances[i, j] <= distance_threshold]
-
-        # Additional safeguard: Ensure every node is connected to at least one neighbor.
-        nodes_with_edges = set()
-        for i, j in valid_edges:
-            nodes_with_edges.add(i)
-            nodes_with_edges.add(j)
-        for i in range(num_nodes):
-            if i not in nodes_with_edges:
-                dists = distances[i]
-                j = np.argsort(dists)[1]  # second smallest (first is itself)
-                valid_edges.append((i, j))
-                nodes_with_edges.add(i)
-                nodes_with_edges.add(j)
-
-        if valid_edges:
-            edge_index = torch.tensor(valid_edges, dtype=torch.long).t().contiguous()
-        else:
-            edge_index = torch.empty((2, 0), dtype=torch.long)
+        edge_index = torch.tensor(valid_edges, dtype=torch.long).t() if valid_edges else torch.empty((2, 0),
+                                                                                                     dtype=torch.long)
         return edge_index
