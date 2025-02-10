@@ -238,7 +238,7 @@ state_size = env.state_size
 action_size = env.action_size
 
 # Initialize the GNN-based IDS
-gnn_model = GATIDS(input_dim=state_size, hidden_dim=32, output_dim=1, use_dropout=True, dropout_rate=0.3, heads=8)
+gnn_model = GCNIDS(input_dim=state_size, hidden_dim=32, output_dim=1, use_dropout=True, dropout_rate=0.3)  # Enable dropout
 optimizer = optim.Adam(gnn_model.parameters(), lr=1e-2) #1e-2
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.95)
 loss_fn = torch.nn.BCEWithLogitsLoss()
@@ -247,7 +247,7 @@ loss_fn = torch.nn.BCEWithLogitsLoss()
 env.gnn_model = gnn_model
 
 # Initialize the RL agent
-agent = DQNAgent(state_size=state_size, action_size=action_size)
+agent = SARSAAgent(state_size=state_size, action_size=action_size)
 optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14) #0.14
 schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=0.95)
 
@@ -290,25 +290,25 @@ for episode in range(1, num_episodes + 1):
     state = env.reset()
     total_reward = 0
 
+    # Choose the first action based on the current state
+    action = agent.act(state)
+
     for step in range(50):  # Simulate up to 50 steps per episode
-        action = agent.act(state)
         next_state, reward, done, _ = env.step(action)
-        agent.remember(state, action, reward, next_state, done)
+        next_action = agent.act(next_state)
+        agent.remember(state, action, reward, next_state, next_action, done)
         total_reward += reward
-        state = next_state
+        state, action = next_state, next_action
 
         if done:
             break
+
     episodic_rewards.append(total_reward)
     epsilon_values.append(agent.epsilon)
     print(f"Episode {episode}/{num_episodes}, Total Reward: {total_reward:.1f}")
 
     # Train the agent
     if len(agent.memory) > batch_size:
-        #print(f"Debug: Memory Size={len(agent.memory)}")
-        sample_memory = random.sample(agent.memory, min(5, len(agent.memory)))
-        #for i, (s, a, r, ns, d) in enumerate(sample_memory):
-            #print(f"Debug: Sample {i}: State={s}, Action={a}, Reward={r:.2f}, Next State={ns}, Done={d}")
         agent.replay(batch_size, optimizerAgent, schedulerAgent, loss_fn)
         #agents_losses.append(loss_fn.item())
 
@@ -329,7 +329,6 @@ for episode in range(1, num_episodes + 1):
 
     # Retrain the IDS every retrain_interval episodes
     if episode % retrain_interval == 0:
-        agent.update_target_network()
         recorded_episodes.append(episode)
         print("Target network updated.")
         print("Retraining IDS...")
@@ -423,6 +422,5 @@ for episode in range(1, num_episodes + 1):
 #plot_traffic_distribution(env.benign, env.malicious)
 #plot_rewards(episodic_rewards)
 #plot_agent_loss(agents_losses)
-plot_epsilon_decay(epsilon_values)
 plot_learning_rate(gnn_lr, "GNN")
 plot_learning_rate(agent_lr, "RL Agent")

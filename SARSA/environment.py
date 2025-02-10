@@ -91,6 +91,12 @@ class NetworkEnvironment:
         next_state = np.random.rand(self.state_size)
         return next_state, reward, done, {}
 
+    def map_action_to_generate(action1):
+        if action1 == 0:
+            return 0
+        else:
+            return random.randint(12, 23)
+
     def generate_traffic(self, action):
         """
         Generate realistic network traffic features based on the chosen action.

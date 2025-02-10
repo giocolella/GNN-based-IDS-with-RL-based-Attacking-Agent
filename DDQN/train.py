@@ -1,10 +1,11 @@
 import torch
 import torch.optim as optim
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix,balanced_accuracy_score, matthews_corrcoef, roc_curve, auc, precision_recall_curve
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, balanced_accuracy_score, matthews_corrcoef, roc_curve, auc, precision_recall_curve
 import numpy as np
 from environment import *
 from gnn_ids import *
 from agent import *
+from sklearn.manifold import TSNE
 import networkx as nx
 from torch_geometric.utils import to_networkx
 import matplotlib.pyplot as plt
@@ -238,7 +239,7 @@ state_size = env.state_size
 action_size = env.action_size
 
 # Initialize the GNN-based IDS
-gnn_model = GATIDS(input_dim=state_size, hidden_dim=32, output_dim=1, use_dropout=True, dropout_rate=0.3, heads=8)
+gnn_model = GCNIDS(input_dim=state_size, hidden_dim=32, output_dim=1, use_dropout=True, dropout_rate=0.3)  # Enable dropout
 optimizer = optim.Adam(gnn_model.parameters(), lr=1e-2) #1e-2
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.95)
 loss_fn = torch.nn.BCEWithLogitsLoss()
@@ -247,7 +248,7 @@ loss_fn = torch.nn.BCEWithLogitsLoss()
 env.gnn_model = gnn_model
 
 # Initialize the RL agent
-agent = DQNAgent(state_size=state_size, action_size=action_size)
+agent = DDQNAgent(state_size=state_size, action_size=action_size)
 optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14) #0.14
 schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=0.95)
 
@@ -305,10 +306,6 @@ for episode in range(1, num_episodes + 1):
 
     # Train the agent
     if len(agent.memory) > batch_size:
-        #print(f"Debug: Memory Size={len(agent.memory)}")
-        sample_memory = random.sample(agent.memory, min(5, len(agent.memory)))
-        #for i, (s, a, r, ns, d) in enumerate(sample_memory):
-            #print(f"Debug: Sample {i}: State={s}, Action={a}, Reward={r:.2f}, Next State={ns}, Done={d}")
         agent.replay(batch_size, optimizerAgent, schedulerAgent, loss_fn)
         #agents_losses.append(loss_fn.item())
 
@@ -326,6 +323,7 @@ for episode in range(1, num_episodes + 1):
 
     #if episode >= 100:
         #set_learning_rate(optimizer,0.0000001)
+        #agent.epsilon = 1.0
 
     # Retrain the IDS every retrain_interval episodes
     if episode % retrain_interval == 0:
@@ -423,6 +421,5 @@ for episode in range(1, num_episodes + 1):
 #plot_traffic_distribution(env.benign, env.malicious)
 #plot_rewards(episodic_rewards)
 #plot_agent_loss(agents_losses)
-plot_epsilon_decay(epsilon_values)
 plot_learning_rate(gnn_lr, "GNN")
 plot_learning_rate(agent_lr, "RL Agent")

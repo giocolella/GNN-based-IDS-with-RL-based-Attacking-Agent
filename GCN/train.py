@@ -1,8 +1,11 @@
+import torch
 import torch.optim as optim
-from sklearn.metrics import precision_score, recall_score, f1_score, balanced_accuracy_score, matthews_corrcoef, roc_curve, auc, precision_recall_curve
-from GCN.environment import *
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, balanced_accuracy_score, matthews_corrcoef, roc_curve, auc, precision_recall_curve
+import numpy as np
+from environment import *
 from gnn_ids import *
-from GCN.agent import *
+from agent import *
+from sklearn.manifold import TSNE
 import networkx as nx
 from torch_geometric.utils import to_networkx
 import matplotlib.pyplot as plt
@@ -250,7 +253,7 @@ optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14) #0.14
 schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=1)
 
 # Training hyperparameters
-num_episodes = 1000
+num_episodes = 250
 batch_size = 32
 retrain_interval = 10
 
@@ -277,11 +280,11 @@ ids_metrics = {
 window_size = 10000  # Keep only the most recent 3,000 samples
 
 # Load and preprocess the dataset
-X_train, X_test, y_train, y_test = load_csv_data("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/mergedfilteredbig.csv")
+X_train, X_test, y_train, y_test = load_csv_data("C:/Users/colg/Desktop/mergedfiltered.csv")
 
 # Pre-train the agent
 pretrain_agentMSE(agent, X_train, y_train)
-gnn_model.pretrain("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/pretrain_dataset.csv")
+gnn_model.pretrain("C:/Users/colg/Desktop/cleaned_ids2018_sampledfiltered.csv")
 print("Pre-training Completed")
 # Main training loop
 for episode in range(1, num_episodes + 1):
@@ -318,8 +321,9 @@ for episode in range(1, num_episodes + 1):
     gnn_lr.append(scheduler.get_last_lr()[0])  # For GNN optimizer
     agent_lr.append(schedulerAgent.get_last_lr()[0])  # For RL agent optimizer
 
-    #if episode >= 100:
+    if episode >= 100:
         #set_learning_rate(optimizer,0.0000001)
+        agent.epsilon = 1.0
 
     # Retrain the IDS every retrain_interval episodes
     if episode % retrain_interval == 0:
@@ -400,6 +404,9 @@ for episode in range(1, num_episodes + 1):
         print(f"False Negatives (FN): {total_fn}")
         print("\nConfusion Matrix:")
         print(cm)
+
+        env.traffic_data = []
+        env.labels = []
 
         # Visualization
         #embeddings = gnn_model(graph_data.x, graph_data.edge_index).detach().numpy()

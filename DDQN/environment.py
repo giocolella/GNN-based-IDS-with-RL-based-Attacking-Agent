@@ -240,14 +240,7 @@ class NetworkEnvironment:
         else:
             detection_result = detection_result.mean().item()
 
-        # Calculate current traffic distribution (benign vs malicious)
-        benign_count = self.labels.count(0)
-        malicious_count = self.labels.count(1)
-        total_count = benign_count + malicious_count
-        self.benign += benign_count
-        self.malicious += malicious_count
-
-        #Sliding window for imbalance calculation -----
+        # Sliding window for imbalance calculation -----
         window_size = 1000
         recent_labels = self.labels[-min(len(self.labels), window_size):]
         benign_count = recent_labels.count(0)
@@ -263,24 +256,22 @@ class NetworkEnvironment:
 
         imbalance_factor = 1 - abs(benign_ratio - malicious_ratio)
 
-        benign_correct_reward    = 15 * imbalance_factor
+        benign_correct_reward = 15 * imbalance_factor
         benign_incorrect_penalty = -10 * imbalance_factor  # increased penalty for false positives
-        malicious_correct_penalty= -20 * imbalance_factor  # increased penalty for detected malicious traffic
+        malicious_correct_penalty = -20 * imbalance_factor  # increased penalty for detected malicious traffic
         malicious_incorrect_reward = 25 * imbalance_factor
 
         if is_malicious:
             # For malicious traffic, if the IDS fails to flag it reward the agent but if flagged, penalize
-            if detection_result <= 0.5:
+            if detection_result <= 0.6:
                 reward = malicious_incorrect_reward  # Reward for evading detection
             else:
                 reward = malicious_correct_penalty  # Penalty for being detected
         else:
-            if detection_result > 0.5:
+            if detection_result > 0.6:
                 reward = benign_incorrect_penalty  # Penalty for misclassifying benign traffic
             else:
                 reward = benign_correct_reward  # Reward for correct classification
-
-        #print(f"Debug: benign_ratio={benign_ratio:.2f}, imbalance_factor={imbalance_factor:.2f}")
 
         # Terminate episode if too many traffic samples have been collected
         done = len(self.traffic_data) > 5000

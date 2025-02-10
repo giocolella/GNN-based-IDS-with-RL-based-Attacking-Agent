@@ -2,22 +2,26 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.neighbors import kneighbors_graph
-from torch_geometric.nn import GATConv
+from torch_geometric.nn import GCNConv
 import numpy as np
 import pandas as pd
 from torch_geometric.data import Data
 from sklearn.utils import resample
+from sklearn.utils.class_weight import compute_class_weight
+from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.model_selection import train_test_split
+from sklearn.metrics.pairwise import cosine_similarity
 import random
 import matplotlib.pyplot as plt
 
-class GATIDS(nn.Module):  # Renamed to reflect GAT usage
-    def __init__(self, input_dim, hidden_dim, output_dim, use_dropout=False, dropout_rate=0.5, heads=1):
-        super(GATIDS, self).__init__()
+class GCNIDS(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, use_dropout=False, dropout_rate=0.5):
+        super(GCNIDS, self).__init__()
         self.use_dropout = use_dropout
 
-        # GAT Layers
-        self.conv1 = GATConv(input_dim, hidden_dim, heads=heads, concat=True)  # GAT layer with multi-head attention
-        self.conv2 = GATConv(hidden_dim * heads, output_dim, heads=1, concat=False)  # Single head in the final layer
+        # GCN Layers
+        self.conv1 = GCNConv(input_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, output_dim)
 
         # Output layer
         self.output_layer = nn.Linear(output_dim, 1)
@@ -26,10 +30,10 @@ class GATIDS(nn.Module):  # Renamed to reflect GAT usage
         self.dropout = nn.Dropout(p=dropout_rate) if self.use_dropout else None
 
     def forward(self, x, edge_index):
-        x = F.elu(self.conv1(x, edge_index))  # GAT layers often use ELU activation
+        x = F.relu(self.conv1(x, edge_index))
         if self.use_dropout:
             x = self.dropout(x)
-        x = self.conv2(x, edge_index)
+        x = F.relu(self.conv2(x, edge_index))
         x = self.output_layer(x)
         return x
 
@@ -71,25 +75,6 @@ def preprocess_data(traffic_data, labels, max_k=10):
     y = torch.tensor(labels, dtype=torch.float32).unsqueeze(1)
 
     return Data(x=x, edge_index=edge_index, y=y)
-
-# Debugging Helper for Overfitting
-def debug_overfitting(train_losses, val_losses):
-    """
-    Plot training and validation loss curves to debug overfitting.
-
-    Args:
-        train_losses (list): List of training losses over epochs.
-        val_losses (list): List of validation losses over epochs.
-    """
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(train_losses, label="Training Loss")
-    plt.plot(val_losses, label="Validation Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.title("Loss Curves")
-    plt.show()
 
 def retrain_balanced(gnn_model, traffic_data, labels, optimizer, epochs=10, batch_size=32):
     """
