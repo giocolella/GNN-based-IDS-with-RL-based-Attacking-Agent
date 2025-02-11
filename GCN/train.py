@@ -193,6 +193,30 @@ def plot_precision_recall_curve(recall_vals,precision_vals):
     plt.legend()
     plt.show()
 
+def plot_cumulative_roc_curve(roc_curves):
+    plt.figure(figsize=(10, 6))
+    for (ep, fpr, tpr, roc_auc) in roc_curves:
+        plt.plot(fpr, tpr, label=f"Episode {ep} (AUC = {roc_auc:.2f})")
+
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("Cumulative ROC Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def plot_cumulative_precision_recall_curve(pr_curves):
+    plt.figure(figsize=(10, 6))
+    for (ep, recall, precision) in pr_curves:
+        plt.plot(recall, precision, label=f"Episode {ep}")
+
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Cumulative Precision-Recall Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
 def visualize_single_dim_embeddings(embeddings, labels):
     plt.figure(figsize=(12, 6))
     plt.scatter(range(len(embeddings)), embeddings[:, 0], c=labels, cmap="coolwarm", alpha=0.7)
@@ -266,6 +290,8 @@ labels = []
 recorded_episodes = []
 gnn_lr = []
 agent_lr = []
+roc_curves = []
+pr_curves = []
 ids_metrics = {
     'Accuracy': [],
     'Precision': [],
@@ -367,13 +393,11 @@ for episode in range(1, num_episodes + 1):
         else:
             print(f"MCC ({mcc:.4f}) meets threshold. Keeping updated GNN state.")
 
-        # ROC and Precision-Recall curves
         fpr, tpr, _ = roc_curve(labels, predictions)
-        precision_vals, recall_vals, _ = precision_recall_curve(labels, predictions)
+        precisions, recalls, _ = precision_recall_curve(labels, predictions)
         roc_auc = auc(fpr, tpr)
-
-        #plot_roc_curve(fpr, tpr, roc_auc)
-        #plot_precision_recall_curve(recall_vals, precision_vals)
+        roc_curves.append((episode, fpr, tpr, roc_auc))
+        pr_curves.append((episode, recalls, precisions))
 
         # Calculate confusion matrix
         cm = confusion_matrix(labels, predictions)
@@ -415,6 +439,8 @@ for episode in range(1, num_episodes + 1):
         #plot_degree_distribution(graph_data)
 
 
+plot_cumulative_roc_curve(roc_curves)
+plot_cumulative_precision_recall_curve(pr_curves)
 #for metric_name, metric_values in ids_metrics.items():
     #plot_metric(metric_values, metric_name, recorded_episodes)
 # Final visualizations
