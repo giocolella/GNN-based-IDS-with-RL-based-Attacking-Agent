@@ -215,5 +215,4 @@ class DQNAgent:
             loss.backward()
             optimizer.step()
 
-        scheduler.step()
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
