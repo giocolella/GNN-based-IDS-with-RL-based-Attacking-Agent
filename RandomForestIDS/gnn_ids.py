@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 from sklearn.utils import resample, shuffle
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -138,10 +139,8 @@ class RFIDS:
         from sklearn.utils import shuffle
         X_all, y_all = shuffle(X_all, y_all, random_state=42)
         unique_mem, counts_mem = np.unique(y_all, return_counts=True)
-        print(f"Overall Memory Label Distribution: {dict(zip(unique_mem, counts_mem))}")
+        #print(f"Overall Memory Label Distribution: {dict(zip(unique_mem, counts_mem))}")
 
-        # Balance the dataset: use stratified sampling.
-        from sklearn.model_selection import train_test_split
         # Determine the number of samples for each class.
         num_benign = np.sum(y_all == 0)
         num_malicious = np.sum(y_all == 1)
@@ -153,10 +152,10 @@ class RFIDS:
         indices = np.concatenate((benign_idx, malicious_idx))
         X_balanced = X_all[indices]
         y_balanced = y_all[indices]
-        print(f"After Balancing - Class Distribution: {dict(zip(*np.unique(y_balanced, return_counts=True)))}")
+        #print(f"After Balancing - Class Distribution: {dict(zip(*np.unique(y_balanced, return_counts=True)))}")
 
         # If too many samples, randomly sample max_samples (using stratified selection)
-        max_samples = 8000
+        max_samples = 10000
         if len(X_balanced) > max_samples:
             indices = np.random.choice(len(X_balanced), max_samples, replace=False)
             X_balanced = X_balanced[indices]
@@ -169,7 +168,6 @@ class RFIDS:
         )
 
         # Train a new RandomForest on the training split.
-        from sklearn.ensemble import RandomForestClassifier
         clf_new = RandomForestClassifier(
             n_estimators=500,
             max_depth=10,
@@ -189,9 +187,6 @@ class RFIDS:
 
         self.trained = True
 
-        # Evaluate on the validation set for debugging.
-        from sklearn.metrics import (accuracy_score, precision_score, recall_score,
-                                     f1_score, balanced_accuracy_score, matthews_corrcoef, confusion_matrix)
         val_probs_all = self.clf.predict_proba(X_val)
         if val_probs_all.shape[1] == 1:
             if self.clf.classes_[0] == 0:
@@ -209,17 +204,6 @@ class RFIDS:
         f1 = f1_score(y_val, val_predictions, zero_division=1) * 100
         bal_acc = balanced_accuracy_score(y_val, val_predictions) * 100
         mcc = matthews_corrcoef(y_val, val_predictions)
-
-        print("Validation Performance After Retraining:")
-        print(f"  Accuracy: {acc:.4f}%")
-        print(f"  Precision: {prec:.4f}%")
-        print(f"  Recall: {rec:.4f}%")
-        print(f"  F1-Score: {f1:.4f}%")
-        print(f"  Balanced Accuracy: {bal_acc:.4f}%")
-        print(f"  MCC: {mcc:.4f}")
-        print("Confusion Matrix (Validation):")
-        print(confusion_matrix(y_val, val_predictions))
-        print("Retraining Complete.")
 
     def pretrain(self, csv_path):
         """

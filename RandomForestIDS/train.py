@@ -65,14 +65,14 @@ gnn_model = RFIDS()
 env.gnn_model = gnn_model
 
 # Initialize the RL agent (unchanged)
-agent = DQNAgent(state_size=state_size, action_size=4)
+agent = DDQNAgent(state_size=state_size, action_size=4)
 optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)
 schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=1)
 
 # Training hyperparameters
-num_episodes = 150
+num_episodes = 160
 batch_size = 32
-retrain_interval = 10
+retrain_interval = 20
 
 # Metrics storage
 episodic_rewards = []
@@ -122,7 +122,7 @@ for episode in range(1, num_episodes + 1):
 
     benign_count = actions_taken.count(0)
     malicious_count = actions_taken.count(1)
-    print(f"Actions Taken - Benign: {benign_count}, Malicious: {malicious_count}")
+    #print(f"Actions Taken - Benign: {benign_count}, Malicious: {malicious_count}")
 
     # Train the RL agent
     if len(agent.memory) > batch_size:
@@ -141,19 +141,19 @@ for episode in range(1, num_episodes + 1):
         print("Retraining IDS (Random Forest)...")
         # Retrain the RFIDS on the collected traffic data
         logits_before = gnn_model.forward(torch.tensor(traffic_data[:5], dtype=torch.float32))
-        print("IDS Output Before Training:", torch.sigmoid(logits_before).detach().numpy())
+        #print("IDS Output Before Training:", torch.sigmoid(logits_before).detach().numpy())
         unique, counts = np.unique(labels, return_counts=True)
-        print("Label distribution before retraining IDS:", dict(zip(unique, counts)))
+        #print("Label distribution before retraining IDS:", dict(zip(unique, counts)))
 
         # Shuffle the data to prevent overfitting
         traffic_data, labels = shuffle(traffic_data, labels)
 
         # Limit training samples to prevent excessive memorization
-        sample_size = min(len(traffic_data), 5000)  # Limit to 5000 samples
+        sample_size = min(len(traffic_data), 10000)  # Limit to 5000 samples
         gnn_model.retrain(traffic_data[:sample_size], labels[:sample_size])
 
         logits_after = gnn_model.forward(torch.tensor(traffic_data[:5], dtype=torch.float32))
-        print("IDS Output After Training:", torch.sigmoid(logits_after).detach().numpy())
+        #print("IDS Output After Training:", torch.sigmoid(logits_after).detach().numpy())
 
         # Evaluate IDS performance
         X_all = np.array(traffic_data, dtype=np.float32)
@@ -181,5 +181,8 @@ for episode in range(1, num_episodes + 1):
         cm = confusion_matrix(labels, predictions)
         print("Confusion Matrix:")
         print(cm)
+
+        env.traffic_data = []
+        env.labels = []
 
 print("Training complete.")
