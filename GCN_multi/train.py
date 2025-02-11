@@ -102,7 +102,7 @@ if __name__ == "__main__":
     )
 
     optimizer_gnn = optim.Adam(gnn_model.parameters(), lr=1e-3)
-    scheduler_gnn = torch.optim.lr_scheduler.StepLR(optimizer_gnn, step_size=20, gamma=0.5)
+    scheduler_gnn = torch.optim.lr_scheduler.StepLR(optimizer_gnn, step_size=20, gamma=0.8)
 
     # Environment + DQNAgent
     env = NetworkEnvironment(gnn_model=gnn_model)

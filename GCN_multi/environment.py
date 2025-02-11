@@ -63,66 +63,233 @@ class NetworkEnvironment:
 
     def generate_traffic(self, action):
         """
-        0 => benigno, >=1 => malevolo
-        """
-        def map_action(a):
-            return 0 if a == 0 else random.randint(12, 28)
+        Generate realistic network traffic features based on the chosen action.
 
-        mapped = map_action(action)
+        Args:
+            action (int): Represents the type of traffic (0 for normal, 1-12 for malicious).
+
+        Returns:
+            np.ndarray: A feature vector representing a single traffic instance.
+        """
+
+        def map_action_to_generate(action1):
+            if action1 == 0:
+                return 0
+            else:
+                return random.randint(12, 28)
+
+        action = map_action_to_generate(action)
+        # Shared feature generation logic
         base_features = {
-            "Dst Port": np.random.randint(1, 65536),
-            "Flow Duration": np.random.uniform(50, 5000),
-            "Tot Fwd Pkts": np.random.randint(1, 1000),
-            "TotLen Fwd Pkts": np.random.uniform(0, 1e6),
-            "Flow Byts/s": np.random.uniform(0, 1e5),
-            "Fwd Pkt Len Max": np.random.uniform(20, 1500),
-            "Protocol": np.random.choice([6, 17, 1]),
-            "Flow Pkts/s": np.random.uniform(0, 1e3),
-            "ACK Flag Cnt": np.random.randint(0, 10),
-            "SYN Flag Cnt": np.random.randint(0, 10),
-            "Fwd IAT Mean": np.random.uniform(0, 1e3),
-            "Init Fwd Win Byts": np.random.uniform(0, 1e5),
-            "Active Mean": np.random.uniform(0, 1e3),
+            "Dst Port": np.random.randint(1, 65536),  # Random destination port
+            "Flow Duration": np.random.uniform(50, 5000),  # Duration in ms
+            "Tot Fwd Pkts": np.random.randint(1, 1000),  # Total forwarded packets
+            "TotLen Fwd Pkts": np.random.uniform(0, 1e6),  # Total length of forwarded packets
+            "Flow Byts/s": np.random.uniform(0, 1e5),  # Bytes per second
+            "Fwd Pkt Len Max": np.random.uniform(20, 1500),  # Max length of forward packets
+            "Protocol": np.random.choice([6, 17, 1]),  # TCP, UDP, ICMP
+            "Flow Pkts/s": np.random.uniform(0, 1e3),  # Packets per second
+            "ACK Flag Cnt": np.random.randint(0, 10),  # ACK flag count
+            "SYN Flag Cnt": np.random.randint(0, 10),  # SYN flag count
+            "Fwd IAT Mean": np.random.uniform(0, 1e3),  # Inter-arrival time mean
+            "Init Fwd Win Byts": np.random.uniform(0, 1e5),  # Initial forward window bytes
+            "Active Mean": np.random.uniform(0, 1e3),  # Active duration mean
         }
 
-        # Se mapped >=12 => malevolo
-        if mapped >= 12:
-            base_features["Flow Byts/s"] = np.random.uniform(1e4, 1e5)
-            base_features["Flow Pkts/s"] = np.random.uniform(1e2, 1e4)
-            base_features["SYN Flag Cnt"] = np.random.randint(10, 50)
+        if action == 0:  # Benign traffic
+            features = base_features
+        elif action >= 12:  # Malicious traffic
+            features = base_features.copy()
+            # Modify features to mimic malicious traffic
+            if action == 12:  # Flood attack
+                features.update({
+                    "Flow Byts/s": np.random.uniform(1e5, 1e6),
+                    "Flow Pkts/s": np.random.uniform(1e3, 1e4),
+                    "SYN Flag Cnt": np.random.randint(10, 50),
+                })
+            elif action == 13:  # DoS Hulk attack
+                features.update({
+                    "Flow Duration": np.random.uniform(1, 100),
+                    "Flow Byts/s": np.random.uniform(1e5, 1e6),
+                    "SYN Flag Cnt": np.random.randint(20, 100),
+                })
+            elif action == 14:  # Malformed packets
+                features.update({
+                    "Fwd Pkt Len Max": np.random.uniform(0, 50),
+                    "ACK Flag Cnt": 0,
+                    "TotLen Fwd Pkts": np.random.uniform(0, 500),
+                })
+            elif action == 15:  # Timing anomalies
+                features.update({
+                    "Flow Duration": np.random.uniform(500, 5000),
+                    "Flow Byts/s": np.random.uniform(0, 1e3),
+                    "Fwd IAT Mean": np.random.uniform(1e3, 1e4),
+                })
+            elif action == 16:  # Protocol anomalies
+                features.update({
+                    "Protocol": np.random.choice([3, 4, 5]),  # Anomalous protocol
+                    "Fwd Pkt Len Max": np.random.uniform(1000, 1500),
+                    "Flow Byts/s": np.random.uniform(0, 1e4),
+                })
+            elif action == 17:  # Bot attack
+                features.update({
+                    "Dst Port": np.random.choice([22, 80, 443]),  # Common botnet targets
+                    "Tot Fwd Pkts": np.random.randint(100, 1000),
+                    "Flow Byts/s": np.random.uniform(1e5, 1e6),
+                })
+            elif action == 18:  # Brute Force - Web attack
+                features.update({
+                    "Dst Port": 80,  # HTTP port
+                    "Tot Fwd Pkts": np.random.randint(50, 300),  # Frequent small bursts
+                    "Flow Byts/s": np.random.uniform(1e3, 1e4),
+                    "ACK Flag Cnt": np.random.randint(0, 5),
+                    "SYN Flag Cnt": np.random.randint(5, 20),
+                })
+            elif action == 19:  # Brute Force - XSS attack
+                features.update({
+                    "Dst Port": np.random.choice([80, 443]),  # Target HTTP or HTTPS
+                    "TotLen Fwd Pkts": np.random.uniform(1e3, 5e4),  # Larger payloads
+                    "Flow Byts/s": np.random.uniform(1e3, 1e5),
+                    "Fwd IAT Mean": np.random.uniform(100, 1000),
+                })
+            elif action == 20:  # Infiltration attack
+                features.update({
+                    "Dst Port": np.random.randint(1, 65536),  # Random ports
+                    "Protocol": np.random.choice([1, 6, 17]),  # ICMP, TCP, UDP
+                    "Active Mean": np.random.uniform(10, 100),  # Short active periods
+                    "Tot Fwd Pkts": np.random.randint(1, 50),
+                })
+            elif action == 21:  # SQL Injection attack
+                features.update({
+                    "Dst Port": 3306,  # MySQL port
+                    "TotLen Fwd Pkts": np.random.uniform(1e3, 1e5),
+                    "Flow Byts/s": np.random.uniform(1e3, 1e5),
+                    "ACK Flag Cnt": np.random.randint(1, 10),
+                })
+            elif action == 22:  # SSH BruteForce attack
+                features.update({
+                    "Dst Port": 22,  # SSH port
+                    "Tot Fwd Pkts": np.random.randint(10, 500),
+                    "Flow Byts/s": np.random.uniform(1e3, 1e5),
+                    "SYN Flag Cnt": np.random.randint(5, 30),
+                })
+            elif action == 23:  # DoS SlowHTTP attack
+                features.update({
+                    "Dst Port": np.random.choice([80, 443]),  # HTTP/HTTPS
+                    "Flow Duration": np.random.uniform(1e3, 1e4),  # Long duration
+                    "Flow Byts/s": np.random.uniform(1, 1e3),  # Very low throughput
+                    "Active Mean": np.random.uniform(10, 500),  # Prolonged active period
+                })
+            elif action == 24:  # Man-in-the-Middle (MitM) Attack
+                features.update({
+                    "Dst Port": np.random.randint(1, 65536),  # Random port to intercept communications
+                    "Flow Duration": np.random.uniform(100, 1000),  # Moderate duration
+                    "Tot Fwd Pkts": np.random.randint(10, 200),  # Moderate packet count
+                    "TotLen Fwd Pkts": np.random.uniform(1e3, 5e4),  # Moderate total length
+                    "Flow Byts/s": np.random.uniform(1e3, 1e5),  # Moderate byte rate
+                    "Fwd Pkt Len Max": np.random.uniform(100, 1500),  # Variable packet length
+                    "Protocol": np.random.choice([6, 17]),  # TCP or UDP
+                    "Flow Pkts/s": np.random.uniform(10, 500),  # Moderate packet rate
+                    "ACK Flag Cnt": np.random.randint(0, 10),  # Variable ACK count
+                    "SYN Flag Cnt": np.random.randint(0, 10),  # Variable SYN count
+                    "Fwd IAT Mean": np.random.uniform(10, 500),  # Moderate inter-arrival time
+                    "Init Fwd Win Byts": np.random.uniform(1e3, 1e5),  # Variable window size
+                    "Active Mean": np.random.uniform(10, 500),  # Moderate active duration
+                })
+            elif action == 25:  # Phishing Attack
+                features.update({
+                    "Dst Port": np.random.choice([25, 587, 465]),  # SMTP ports
+                    "Flow Duration": np.random.uniform(50, 500),  # Short duration
+                    "Tot Fwd Pkts": np.random.randint(1, 50),  # Few packets
+                    "TotLen Fwd Pkts": np.random.uniform(500, 5e3),  # Small total length
+                    "Flow Byts/s": np.random.uniform(1e2, 1e4),  # Low byte rate
+                    "Fwd Pkt Len Max": np.random.uniform(100, 500),  # Small packet length
+                    "Protocol": 6,  # TCP
+                    "Flow Pkts/s": np.random.uniform(1, 100),  # Low packet rate
+                    "ACK Flag Cnt": np.random.randint(0, 5),  # Low ACK count
+                    "SYN Flag Cnt": np.random.randint(0, 5),  # Low SYN count
+                    "Fwd IAT Mean": np.random.uniform(50, 500),  # Moderate inter-arrival time
+                    "Init Fwd Win Byts": np.random.uniform(1e3, 1e4),  # Small window size
+                    "Active Mean": np.random.uniform(10, 100),  # Short active duration
+                })
+            elif action == 26:  # Ransomware Attack
+                features.update({
+                    "Dst Port": np.random.choice([445, 139]),  # SMB ports
+                    "Flow Duration": np.random.uniform(500, 5000),  # Longer duration
+                    "Tot Fwd Pkts": np.random.randint(100, 1000),  # High packet count
+                    "TotLen Fwd Pkts": np.random.uniform(1e4, 1e6),  # Large total length
+                    "Flow Byts/s": np.random.uniform(1e4, 1e6),  # High byte rate
+                    "Fwd Pkt Len Max": np.random.uniform(500, 1500),  # Large packet length
+                    "Protocol": 6,  # TCP
+                    "Flow Pkts/s": np.random.uniform(100, 1000),  # High packet rate
+                    "ACK Flag Cnt": np.random.randint(10, 50),  # High ACK count
+                    "SYN Flag Cnt": np.random.randint(10, 50),  # High SYN count
+                    "Fwd IAT Mean": np.random.uniform(1, 100),  # Short inter-arrival time
+                    "Init Fwd Win Byts": np.random.uniform(1e4, 1e5),  # Large window size
+                    "Active Mean": np.random.uniform(100, 1000),  # Long active duration
+                })
+            elif action == 27:  # DNS Spoofing Attack
+                features.update({
+                    "Dst Port": 53,  # DNS port
+                    "Flow Duration": np.random.uniform(10, 100),  # Very short duration
+                    "Tot Fwd Pkts": np.random.randint(1, 10),  # Few packets
+                    "TotLen Fwd Pkts": np.random.uniform(100, 1e3),  # Small total length
+                    "Flow Byts/s": np.random.uniform(1e3, 1e4),  # Moderate byte rate
+                    "Fwd Pkt Len Max": np.random.uniform(50, 500),  # Small packet length
+                    "Protocol": 17,  # UDP
+                    "Flow Pkts/s": np.random.uniform(10, 100),  # Moderate packet rate
+                    "ACK Flag Cnt": 0,  # No ACKs in UDP
+                    "SYN Flag Cnt": 0,  # No SYNs in UDP
+                    "Fwd IAT Mean": np.random.uniform(1, 10),  # Very short inter-arrival time
+                    "Init Fwd Win Byts": 0,  # Not applicable for UDP
+                    "Active Mean": np.random.uniform(1, 10),  # Very short active duration
+                })
+            elif action == 28:  # ARP Spoofing Attack
+                features.update({
+                    "Dst Port": 0,  # ARP operates at Layer 2 and does not involve ports
+                    "Flow Duration": np.random.uniform(10, 100),  # Very short duration
+                    "Tot Fwd Pkts": np.random.randint(1, 10),  # Very few packets
+                    "TotLen Fwd Pkts": np.random.uniform(28, 1500),  # ARP packet size range
+                    "Flow Byts/s": np.random.uniform(1e3, 1e4),  # Moderate byte rate
+                    "Fwd Pkt Len Max": np.random.uniform(28, 60),  # Typical ARP request/reply size
+                    "Protocol": 0,  # Protocol number 0 for "none" (ARP is a Layer 2 protocol)
+                    "Flow Pkts/s": np.random.uniform(10, 200),  # Moderate packet rate during flooding
+                    "ACK Flag Cnt": 0,  # No ACKs in ARP
+                    "SYN Flag Cnt": 0,  # No SYNs in ARP
+                    "Fwd IAT Mean": np.random.uniform(1, 10),  # Very short inter-arrival time
+                    "Init Fwd Win Byts": 0,  # Not applicable for ARP
+                    "Active Mean": np.random.uniform(1, 10),  # Very short active duration
+                })
 
-            # poi specializzi per i diversi attacchi ...
-            # [omesso per brevità, invariato dal tuo codice]
+        return np.array(list(features.values()))
 
-        return np.array(list(base_features.values()))
+    def get_edge_index(self, distance_threshold=10.0):
+        """
+        Generates edge indices by connecting all nodes whose Euclidean distance
+        is below a specified threshold.
 
-    def get_edge_index(self, k=5, distance_threshold=10.0):
+        Args:
+            distance_threshold (float): Maximum distance to include an edge.
+
+        Returns:
+            torch.Tensor: Edge index in PyTorch Geometric format.
+        """
         num_nodes = len(self.traffic_data)
         if num_nodes < 2:
             return torch.empty((2, 0), dtype=torch.long)
 
-        adjusted_k = min(k, num_nodes - 1)
         features = np.array(self.traffic_data)
-        knn_graph = kneighbors_graph(features, n_neighbors=adjusted_k, mode="connectivity", include_self=False)
+        # Compute pairwise Euclidean distances for all nodes
         distances = euclidean_distances(features)
-        row, col = knn_graph.nonzero()
-        valid_edges = [(i, j) for i, j in zip(row, col) if distances[i, j] <= distance_threshold]
 
-        # connetti nodi isolati
-        nodes_with_edges = set()
-        for i, j in valid_edges:
-            nodes_with_edges.add(i)
-            nodes_with_edges.add(j)
+        edge_list = []
         for i in range(num_nodes):
-            if i not in nodes_with_edges:
-                dists = distances[i]
-                j = np.argsort(dists)[1]
-                valid_edges.append((i, j))
-                nodes_with_edges.add(i)
-                nodes_with_edges.add(j)
+            for j in range(num_nodes):
+                if i != j and distances[i, j] <= distance_threshold:
+                    edge_list.append((i, j))
 
-        if valid_edges:
-            edge_index = torch.tensor(valid_edges, dtype=torch.long).t().contiguous()
+        if edge_list:
+            edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
         else:
             edge_index = torch.empty((2, 0), dtype=torch.long)
 
