@@ -97,12 +97,12 @@ class GCNIDS(nn.Module):
         return x
 
 
-# ===============================
-# Funzione per caricare e preprocessare il dataset
-# ===============================
+from sklearn.impute import SimpleImputer
+
+
 def load_and_preprocess(csv_path, max_k=10, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15):
     """
-    Carica il dataset da CSV, crea il grafo (k-NN) e suddivide in train/val/test.
+    Carica il dataset da CSV, imputa eventuali valori mancanti, crea il grafo (k-NN) e suddivide in train/val/test.
 
     Args:
         csv_path (str): percorso del file CSV.
@@ -113,20 +113,37 @@ def load_and_preprocess(csv_path, max_k=10, train_ratio=0.7, val_ratio=0.15, tes
         data (torch_geometric.data.Data): oggetto contenente x, edge_index, y e le maschere.
         uniques (Index): etichette univoche (utile per definire il numero di classi).
     """
+    import pandas as pd
+    import numpy as np
+    from torch_geometric.data import Data
+    from sklearn.neighbors import kneighbors_graph
+
+    # Carica il CSV
     df = pd.read_csv(csv_path)
-    features = df.iloc[:, :-1].values
-    # Factorizziamo le etichette (l'ultima colonna)
+
+    # Opzione 1: Rimuove le righe con valori mancanti
+    # df = df.dropna()
+
+    # Opzione 2: Imputa i valori mancanti (qui utilizziamo la media)
+    imputer = SimpleImputer(strategy='mean')
+    features = imputer.fit_transform(df.iloc[:, :-1].values)
+
+    # Factorizza le etichette (l'ultima colonna)
     labels, uniques = pd.factorize(df.iloc[:, -1])
 
+    # Converte le feature e le etichette in tensori
+    import torch
     x = torch.tensor(features, dtype=torch.float32)
     y = torch.tensor(labels, dtype=torch.long)
 
-    # Costruisco la k-NN graph
+    # Costruisci la k-NN graph
     knn_graph = kneighbors_graph(features, n_neighbors=max_k, mode="distance", include_self=False)
-    # Applico una soglia (90° percentile) per eliminare connessioni con distanza elevata
+    # Applica una soglia (90° percentile) per eliminare connessioni con distanza elevata
     dist_threshold = np.percentile(knn_graph.data, 90)
     knn_graph.data[knn_graph.data > dist_threshold] = 0
     knn_graph.eliminate_zeros()
+
+    # Converte in edge_index per PyTorch Geometric
     edge_index = torch.tensor(np.array(knn_graph.nonzero()), dtype=torch.long)
 
     data = Data(x=x, edge_index=edge_index, y=y)
@@ -155,8 +172,6 @@ def load_and_preprocess(csv_path, max_k=10, train_ratio=0.7, val_ratio=0.15, tes
     data.test_mask = test_mask
 
     return data, uniques
-
-
 # ===============================
 # Funzioni per training ed evaluation
 # ===============================
@@ -216,7 +231,7 @@ def plot_tsne_embeddings(model, data):
 # ===============================
 def main():
     # Specifica il percorso del dataset principale
-    csv_path = "/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/pretrain_dataset.csv"  # Modifica con il percorso corretto
+    csv_path = "/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/mergedfilteredbig.csv"  # Modifica con il percorso corretto
 
     # Carica e preprocessa il dataset, ottenendo anche le maschere per train/val/test
     data, uniques = load_and_preprocess(csv_path, max_k=10, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15)
