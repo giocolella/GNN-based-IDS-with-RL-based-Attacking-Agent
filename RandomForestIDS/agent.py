@@ -8,7 +8,7 @@ class DDQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = deque(maxlen=50000000)
+        self.memory = deque(maxlen=100000)
         self.gamma = 0.99  # Discount factor
         self.epsilon = 1.0  # Exploration rate
         self.epsilon_min = 0.01

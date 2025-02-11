@@ -41,16 +41,21 @@ class NetworkEnvironment:
         else:
             detection_result = detection_result.item()
 
-        # --- Revised Reward Structure ---
+        # Calculate current traffic distribution (benign vs malicious)
+        benign_count = self.labels.count(0)
+        malicious_count = self.labels.count(1)
+        total_count = benign_count + malicious_count
+        self.benign += benign_count
+        self.malicious += malicious_count
+
         # For malicious traffic, we want the IDS to be uncertain (detection near 0.5) so that
         # the agent is rewarded for “camouflaging” its traffic.
         if is_malicious:
             # Reward peaks when detection_result is 0.5; falls off if too low or too high.
-            reward = 35 - 50 * abs(detection_result - 0.5)
+            reward = 25 - 20 * abs(detection_result - 0.5)
         else:
             # For benign traffic, reward highest when detection_result is near 0.
-            reward = 15 - 30 * abs(detection_result - 0.0)
-        # -----------------------------------
+            reward = 15 - 5 * abs(detection_result - 0.0)
 
         done = len(self.traffic_data) > 5000  # termination condition
         next_state = np.random.rand(self.state_size)

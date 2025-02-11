@@ -1,15 +1,19 @@
 import torch
 import torch.optim as optim
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, balanced_accuracy_score, matthews_corrcoef
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score,
+                             confusion_matrix, balanced_accuracy_score, matthews_corrcoef,
+                             roc_curve, auc, precision_recall_curve)
 import numpy as np
 import random
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+import networkx as nx
+from sklearn.manifold import TSNE
+from sklearn.utils import shuffle
 from environment import *
 from agent import *
-from sklearn.utils import shuffle
-# Import the Random Forest IDS
 from gnn_ids import *
 
 def set_seed(seed):
@@ -34,7 +38,7 @@ def load_csv_data(file_path):
     features = scaler.fit_transform(features)
     return train_test_split(features, labels, test_size=0.2, random_state=42)
 
-# Pre-train the RL agent
+
 def pretrain_agentMSE(agent, features, labels, epochs=1, batch_size=32):
     optimizer = optim.Adam(agent.model.parameters(), lr=agent.learning_rate)
     loss_fn = torch.nn.MSELoss()
@@ -51,35 +55,165 @@ def pretrain_agentMSE(agent, features, labels, epochs=1, batch_size=32):
             optimizer.step()
         print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item()}")
 
+def plot_traffic_distribution(benign, malicious):
+    """Plots the frequency of benign versus malicious traffic."""
+    labels_ = ['Benign', 'Malicious']
+    frequencies = [benign, malicious]
+    plt.figure(figsize=(8, 6))
+    plt.bar(labels_, frequencies, color=['green', 'red'], alpha=0.7)
+    plt.xlabel('Traffic Type', fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.title('Traffic Distribution (Benign vs Malicious)', fontsize=14)
+    for i, freq in enumerate(frequencies):
+        plt.text(i, freq + 0.01 * max(frequencies), str(freq), ha='center', fontsize=10)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_rewards(rewards):
+    """Plots episodic rewards over episodes."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(rewards, label="Total Reward")
+    plt.xlabel("Episode")
+    plt.ylabel("Total Reward")
+    plt.title("Episodic Rewards")
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+def plot_epsilon_decay(epsilon_values):
+    """Plots the decay of epsilon (exploration parameter) over episodes."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(epsilon_values, label="Epsilon Value")
+    plt.xlabel("Episode")
+    plt.ylabel("Epsilon")
+    plt.title("Epsilon Decay Over Episodes")
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+def plot_agent_loss(losses):
+    """Plots the RL agent loss over episodes."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(losses, label="Loss")
+    plt.xlabel("Episode")
+    plt.ylabel("Loss")
+    plt.title("RL Agent Loss")
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+def plot_learning_rate(lr_values, label):
+    """Plots the learning rate progression."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(lr_values, marker='o', label=f"{label} Learning Rate")
+    plt.xlabel("Episode", fontsize=12)
+    plt.ylabel("Learning Rate", fontsize=12)
+    plt.title(f"{label} Learning Rate Progression", fontsize=14)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def plot_roc_curve(fpr, tpr, roc_auc):
+    """Plots a single ROC curve."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.2f}")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def plot_precision_recall_curve(recall_vals, precision_vals):
+    """Plots a single Precision-Recall curve."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(recall_vals, precision_vals, label="Precision-Recall Curve")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Precision-Recall Curve")
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+def plot_cumulative_roc_curve(roc_curves):
+    """Plots all accumulated ROC curves on one figure."""
+    plt.figure(figsize=(10, 6))
+    for (ep, fpr, tpr, roc_auc) in roc_curves:
+        plt.plot(fpr, tpr, label=f"Episode {ep} (AUC = {roc_auc:.2f})")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("Cumulative ROC Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def plot_cumulative_precision_recall_curve(pr_curves):
+    """Plots all accumulated Precision-Recall curves on one figure."""
+    plt.figure(figsize=(10, 6))
+    for (ep, recall, precision) in pr_curves:
+        plt.plot(recall, precision, label=f"Episode {ep}")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Cumulative Precision-Recall Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def visualize_single_dim_embeddings(embeddings, labels):
+    """Visualizes single-dimensional node embeddings."""
+    plt.figure(figsize=(12, 6))
+    plt.scatter(range(len(embeddings)), embeddings[:, 0], c=labels, cmap="coolwarm", alpha=0.7)
+    plt.colorbar(label="Node Labels")
+    plt.title("Single-Dimensional Node Embedding Visualization")
+    plt.xlabel("Node Index")
+    plt.ylabel("Embedding Value")
+    plt.grid()
+    plt.show()
+
+def plot_metric(metric_values, metric_name, episodes):
+    """Plots the progression of a given metric over episodes."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(episodes, metric_values, marker='o', label=f"{metric_name} Over Episodes")
+    plt.xlabel("Episode", fontsize=12)
+    plt.ylabel(metric_name, fontsize=12)
+    plt.title(f"{metric_name} Progression", fontsize=14)
+    plt.grid(True)
+    plt.legend()
+    plt.xticks(episodes)
+    plt.tight_layout()
+    plt.show()
+
 set_seed(16)
 
-# Initialize the environment (the environment still expects a .forward(x, edge_index) method)
+# Initialize the environment.
 env = NetworkEnvironment(gnn_model=None)
 state_size = env.state_size
 action_size = env.action_size
 
-# Initialize the IDS as a Random Forest classifier
+# Initialize the IDS as a Random Forest classifier.
 gnn_model = RFIDS()
-
-# (No optimizer, scheduler, or loss_fn are needed for the IDS now.)
 env.gnn_model = gnn_model
 
-# Initialize the RL agent (unchanged)
-agent = DDQNAgent(state_size=state_size, action_size=4)
-optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)
-schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=1)
+# Initialize the RL agent.
+agent = DDQNAgent(state_size=state_size, action_size=action_size)
+optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)#1e-2
+schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=0.95)
 
-# Training hyperparameters
-num_episodes = 160
+# Training hyperparameters.
+num_episodes = 40
 batch_size = 32
-retrain_interval = 20
+retrain_interval = 10
 
-# Metrics storage
+# Metrics and tracking.
 episodic_rewards = []
 epsilon_values = []
 traffic_data = []
 labels = []
-recorded_episodes = []
+recorded_episodes = []  # Episodes at which IDS retraining occurred.
+roc_curves = []  # To accumulate ROC curve data.
+pr_curves = []  # To accumulate Precision-Recall curve data.
 ids_metrics = {
     'Accuracy': [],
     'Precision': [],
@@ -88,19 +222,21 @@ ids_metrics = {
     'Balanced Accuracy': [],
     'Mcc': []
 }
+agent_lr = []  # To track RL agent learning rate (schedulerAgent).
 
 window_size = 10000
 
-# Load and preprocess the dataset for pretraining the RL agent
+# Load and preprocess the dataset for pretraining the RL agent.
 X_train, X_test, y_train, y_test = load_csv_data("C:/Users/colg/Desktop/mergedfiltered.csv")
 
+# Pre-train the RL agent.
 pretrain_agentMSE(agent, X_train, y_train)
 
-# Pretrain the IDS classifier (Random Forest) using a CSV dataset
+# Pretrain the IDS classifier (Random Forest) using a CSV dataset.
 gnn_model.pretrain("C:/Users/colg/Desktop/cleaned_ids2018_sampledfiltered.csv")
 print("Pre-training Completed")
 
-# Main training loop
+# Main training loop.
 for episode in range(1, num_episodes + 1):
     state = env.reset()
     total_reward = 0
@@ -120,52 +256,47 @@ for episode in range(1, num_episodes + 1):
     epsilon_values.append(agent.epsilon)
     print(f"Episode {episode}/{num_episodes}, Total Reward: {total_reward:.1f}")
 
+    # (Optional) Print action counts.
     benign_count = actions_taken.count(0)
     malicious_count = actions_taken.count(1)
-    #print(f"Actions Taken - Benign: {benign_count}, Malicious: {malicious_count}")
+    # print(f"Actions Taken - Benign: {benign_count}, Malicious: {malicious_count}")
 
-    # Train the RL agent
+    # Train the RL agent.
     if len(agent.memory) > batch_size:
         agent.replay(batch_size, optimizerAgent, schedulerAgent, torch.nn.MSELoss())
 
-    # Collect traffic data for retraining
+    # Track RL agent learning rate.
+    agent_lr.append(schedulerAgent.get_last_lr()[0])
+
+    # Collect traffic data for retraining.
     traffic_data.extend(env.traffic_data)
     labels.extend(env.labels)
     if len(traffic_data) > window_size:
         traffic_data = traffic_data[-window_size:]
         labels = labels[-window_size:]
 
-    # Retrain the IDS every retrain_interval episodes
+    # Retrain the IDS every retrain_interval episodes.
     if episode % retrain_interval == 0:
         agent.update_target_network()
+        recorded_episodes.append(episode)
         print("Retraining IDS (Random Forest)...")
-        # Retrain the RFIDS on the collected traffic data
-        logits_before = gnn_model.forward(torch.tensor(traffic_data[:5], dtype=torch.float32))
-        #print("IDS Output Before Training:", torch.sigmoid(logits_before).detach().numpy())
-        unique, counts = np.unique(labels, return_counts=True)
-        #print("Label distribution before retraining IDS:", dict(zip(unique, counts)))
 
-        # Shuffle the data to prevent overfitting
+        # Shuffle and limit the data to avoid overfitting.
         traffic_data, labels = shuffle(traffic_data, labels)
-
-        # Limit training samples to prevent excessive memorization
-        sample_size = min(len(traffic_data), 10000)  # Limit to 5000 samples
+        sample_size = min(len(traffic_data), 10000)
         gnn_model.retrain(traffic_data[:sample_size], labels[:sample_size])
 
-        logits_after = gnn_model.forward(torch.tensor(traffic_data[:5], dtype=torch.float32))
-        #print("IDS Output After Training:", torch.sigmoid(logits_after).detach().numpy())
-
-        # Evaluate IDS performance
+        # Evaluate IDS performance.
         X_all = np.array(traffic_data, dtype=np.float32)
         X_tensor = torch.tensor(X_all)
         logits = gnn_model.forward(X_tensor)
-        # Using sigmoid to convert logits to probabilities, then round to 0/1
+        # Use sigmoid to convert outputs to probabilities, then round to obtain binary predictions.
         predictions = torch.sigmoid(logits).detach().round().squeeze().numpy()
 
         accuracy = accuracy_score(labels, predictions) * 100
         precision = precision_score(labels, predictions, average="binary", zero_division=1) * 100
         recall = recall_score(labels, predictions, average="binary", zero_division=1) * 100
-        f1 = f1_score(labels, predictions, average="binary",  zero_division=1) * 100
+        f1 = f1_score(labels, predictions, average="binary", zero_division=1) * 100
         balanced_accuracy = balanced_accuracy_score(labels, predictions) * 100
         mcc = matthews_corrcoef(labels, predictions)
 
@@ -176,13 +307,35 @@ for episode in range(1, num_episodes + 1):
         ids_metrics['Balanced Accuracy'].append(balanced_accuracy)
         ids_metrics['Mcc'].append(mcc)
 
-        print(f"IDS Performance - Accuracy: {accuracy:.4f}%, Precision: {precision:.4f}%, Recall: {recall:.4f}%, F1-Score: {f1:.4f}%")
+        print(f"IDS Performance - Accuracy: {accuracy:.4f}%, Precision: {precision:.4f}%, "
+              f"Recall: {recall:.4f}%, F1-Score: {f1:.4f}%")
         print(f"Balanced Accuracy: {balanced_accuracy:.4f}%, MCC: {mcc:.4f}")
         cm = confusion_matrix(labels, predictions)
         print("Confusion Matrix:")
         print(cm)
 
+        # Compute ROC and Precision-Recall curves
+        fpr, tpr, _ = roc_curve(labels, predictions)
+        precisions, recalls, _ = precision_recall_curve(labels, predictions)
+        roc_auc = auc(fpr, tpr)
+        roc_curves.append((episode, fpr, tpr, roc_auc))
+        pr_curves.append((episode, recalls, precisions))
+
+        # Clear collected traffic data for the next retraining interval
         env.traffic_data = []
         env.labels = []
 
 print("Training complete.")
+
+plot_cumulative_roc_curve(roc_curves)
+plot_cumulative_precision_recall_curve(pr_curves)
+
+plot_rewards(episodic_rewards)
+plot_epsilon_decay(epsilon_values)
+
+plot_learning_rate(agent_lr, "RL Agent")
+
+plot_traffic_distribution(env.benign, env.malicious)
+
+for metric_name, metric_values in ids_metrics.items():
+    plot_metric(metric_values, metric_name, recorded_episodes)
