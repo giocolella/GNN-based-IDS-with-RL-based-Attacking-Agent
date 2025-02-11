@@ -434,18 +434,12 @@ for episode in range(1, num_episodes + 1):
         env.traffic_data = []
         env.labels = []
 
-        # Visualization
-        #embeddings = gnn_model(graph_data.x, graph_data.edge_index).detach().numpy()
-        #visualize_single_dim_embeddings(embeddings, labels)
-        #plot_degree_distribution(graph_data)
-
 plot_cumulative_roc_curve(roc_curves)
 plot_cumulative_precision_recall_curve(pr_curves)
-#for metric_name, metric_values in ids_metrics.items():
-    #plot_metric(metric_values, metric_name, recorded_episodes)
-# Final visualizations
-#plot_traffic_distribution(env.benign, env.malicious)
-#plot_rewards(episodic_rewards)
-#plot_agent_loss(agents_losses)
+for metric_name, metric_values in ids_metrics.items():
+    plot_metric(metric_values, metric_name, recorded_episodes)
+plot_traffic_distribution(env.benign, env.malicious)
+plot_rewards(episodic_rewards)
+plot_agent_loss(agents_losses)
 plot_learning_rate(gnn_lr, "GNN")
 plot_learning_rate(agent_lr, "RL Agent")

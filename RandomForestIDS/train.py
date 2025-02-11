@@ -70,15 +70,25 @@ def plot_traffic_distribution(benign, malicious):
     plt.show()
 
 
-def plot_rewards(rewards):
-    """Plots episodic rewards over episodes."""
+# Function to plot reward trends with a trend line
+def plot_rewards(rewards, numEp):
+    episodes = numEp # X-axis (episode numbers)
+
+    # Compute trend line (linear regression)
+    coeffs = np.polyfit(episodes, rewards, 1)  # Fit a linear model (degree 1)
+    trend = np.poly1d(coeffs)  # Create polynomial function from coefficients
+
     plt.figure(figsize=(10, 6))
-    plt.plot(rewards, label="Total Reward")
+    plt.plot(rewards, label="Total Reward", alpha=0.7)  # Original rewards
+    plt.plot(episodes, trend(episodes), color="orange", linewidth=2, label="Trend")  # Trend line
+
+    # Labels and formatting
     plt.xlabel("Episode")
     plt.ylabel("Total Reward")
     plt.title("Episodic Rewards")
     plt.grid()
     plt.legend()
+
     plt.show()
 
 def plot_epsilon_decay(epsilon_values):

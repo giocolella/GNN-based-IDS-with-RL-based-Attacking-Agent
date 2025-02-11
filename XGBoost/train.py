@@ -29,8 +29,6 @@ from environment import *   # Gestisce l'ambiente e funzioni di preprocessamento
 from agent import *         # Contiene la definizione del DQNAgent
 from xgboost_ids import XGBIDS  # Utilizzeremo il nostro IDS basato su XGBoost
 
-# ------------------------- FUNZIONI AUSILIARIE -------------------------
-
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -211,6 +209,31 @@ def plot_precision_recall_curve(recall_vals, precision_vals):
     plt.legend()
     plt.show()
 
+def plot_cumulative_roc_curve(roc_curves):
+    plt.figure(figsize=(10, 6))
+    for (ep, fpr, tpr, roc_auc) in roc_curves:
+        plt.plot(fpr, tpr, label=f"Episode {ep} (AUC = {roc_auc:.2f})")
+
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("Cumulative ROC Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
+def plot_cumulative_precision_recall_curve(pr_curves):
+    plt.figure(figsize=(10, 6))
+    for (ep, recall, precision) in pr_curves:
+        plt.plot(recall, precision, label=f"Episode {ep}")
+
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Cumulative Precision-Recall Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
 def visualize_single_dim_embeddings(embeddings, labels):
     plt.figure(figsize=(12, 6))
     plt.scatter(range(len(embeddings)), embeddings[:, 0], c=labels, cmap="coolwarm", alpha=0.7)
@@ -244,16 +267,12 @@ def plot_metric(metric_values, metric_name, episodes):
     plt.tight_layout()
     plt.show()
 
-# ------------------------- SETTAGGIO INIZIALE -------------------------
-
 set_seed(16)  # Imposta il seed per la riproducibilità
 
 # Inizializza l'ambiente
 env = NetworkEnvironment(gnn_model=None)  # Il modello IDS verrà assegnato subito dopo
 state_size = env.state_size
 action_size = env.action_size
-
-# ------------------------- INIZIALIZZAZIONE DEI MODELLI -------------------------
 
 # Inizializza il modello IDS basato su XGBoost
 ids_model = XGBIDS()
@@ -277,6 +296,8 @@ traffic_data = []
 labels = []
 recorded_episodes = []
 agent_lr = []
+roc_curves = []
+pr_curves = []
 ids_metrics = {
     'Accuracy': [],
     'Precision': [],
@@ -298,8 +319,6 @@ pretrain_agentMSE(agent, X_train, y_train)
 # Pre-train del IDS (XGBIDS utilizza il file CSV per il training)
 ids_model.pretrain("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/mergedfilteredbig2.csv")
 print("Pre-training Completed")
-
-# ------------------------- TRAINING LOOP -------------------------
 
 for episode in range(1, num_episodes + 1):
     state = env.reset()
@@ -368,6 +387,12 @@ for episode in range(1, num_episodes + 1):
         ids_metrics['Balanced Accuracy'].append(balanced_accuracy)
         ids_metrics['Mcc'].append(mcc)
 
+        fpr, tpr, _ = roc_curve(labels, predictions)
+        precisions, recalls, _ = precision_recall_curve(labels, predictions)
+        roc_auc = auc(fpr, tpr)
+        roc_curves.append((episode, fpr, tpr, roc_auc))
+        pr_curves.append((episode, recalls, precisions))
+
         print(f"Retrained IDS - Accuracy: {accuracy:.4f}%, Precision: {precision:.4f}%, Recall: {recall:.4f}%, F1-Score: {f1:.4f}%")
         print(f"Balanced Accuracy: {balanced_accuracy:.4f}%, MCC: {mcc:.4f}")
 
@@ -380,18 +405,11 @@ for episode in range(1, num_episodes + 1):
         print("\nConfusion Matrix:")
         print(cm)
 
-        # (Ulteriori visualizzazioni (ROC, Precision-Recall, ecc.) possono essere decommentate se necessarie)
-        # fpr, tpr, _ = roc_curve(labels, predictions)
-        # roc_auc = auc(fpr, tpr)
-        # plot_roc_curve(fpr, tpr, roc_auc)
-        # precision_vals, recall_vals, _ = precision_recall_curve(labels, predictions)
-        # plot_precision_recall_curve(recall_vals, precision_vals)
-        # visualize_single_dim_embeddings(embeddings, labels)
-        # plot_degree_distribution(graph_data)
-
-# ------------------------- VISUALIZZAZIONI FINALI -------------------------
-
-# Ad esempio, visualizzazione del learning rate per l'agente RL (XGBIDS non utilizza uno scheduler)
+plot_cumulative_roc_curve(roc_curves)
+plot_cumulative_precision_recall_curve(pr_curves)
+for metric_name, metric_values in ids_metrics.items():
+    plot_metric(metric_values, metric_name, recorded_episodes)
+plot_traffic_distribution(env.benign, env.malicious)
+plot_rewards(episodic_rewards)
+plot_agent_loss(agents_losses)
 plot_learning_rate(agent_lr, "RL Agent")
-# plot_rewards(episodic_rewards)
-# plot_traffic_distribution(env.benign, env.malicious)
