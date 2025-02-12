@@ -278,7 +278,7 @@ action_size = env.action_size
 # Initialize the GNN-based IDS
 gnn_model = GCNIDS(input_dim=state_size, hidden_dim=32, output_dim=1, use_dropout=True, dropout_rate=0.3)  # Enable dropout
 optimizer = optim.Adam(gnn_model.parameters(), lr=1e-2) #1e-2
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.99)
 loss_fn = torch.nn.BCEWithLogitsLoss()
 
 # Attach GNN model to the environment
@@ -286,8 +286,8 @@ env.gnn_model = gnn_model
 
 # Initialize the RL agent
 agent = SARSAAgent(state_size=state_size, action_size=action_size)
-optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14) #0.14
-schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=4, gamma=0.9)
+optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.001) #0.14
+schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=4, gamma=1)
 
 # Training hyperparameters
 num_episodes = 1000

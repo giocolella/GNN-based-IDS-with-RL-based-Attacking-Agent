@@ -293,8 +293,8 @@ env.gnn_model = ids_model
 
 # Inizializza l'agente di RL
 agent = DDQNAgent(state_size=state_size, action_size=action_size)
-optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)
-schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=4, gamma=0.9)
+optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.001)
+schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=4, gamma=1)
 
 # Iperparametri per il training
 num_episodes = 1000

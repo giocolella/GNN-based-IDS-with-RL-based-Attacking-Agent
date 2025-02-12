@@ -248,8 +248,8 @@ if __name__ == "__main__":
         dropout_rate=0.5
     )
 
-    optimizer_gnn = optim.Adam(gnn_model.parameters(), lr=1e-3)
-    scheduler_gnn = torch.optim.lr_scheduler.StepLR(optimizer_gnn, step_size=4, gamma=0.9)
+    optimizer_gnn = optim.Adam(gnn_model.parameters(), lr=1e-2)
+    scheduler_gnn = torch.optim.lr_scheduler.StepLR(optimizer_gnn, step_size=4, gamma=0.99)
 
     # Environment + DQNAgent
     env = NetworkEnvironment(gnn_model=gnn_model)
@@ -270,8 +270,8 @@ if __name__ == "__main__":
     retrain_interval = 50
     window_size = 10000
 
-    optimizer_agent = optim.Adam(agent.model.parameters(), lr=agent.learning_rate)
-    scheduler_agent = torch.optim.lr_scheduler.StepLR(optimizer_agent, step_size=4, gamma=0.9)
+    optimizer_agent = optim.Adam(agent.model.parameters(), lr=0.001)
+    scheduler_agent = torch.optim.lr_scheduler.StepLR(optimizer_agent, step_size=4, gamma=1)
 
     episodic_rewards = []
     epsilon_values = []
