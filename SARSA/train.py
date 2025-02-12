@@ -467,7 +467,7 @@ for episode in range(1, num_episodes + 1):
 
 plot_cumulative_roc_curve(roc_curves)
 plot_cumulative_precision_recall_curve(pr_curves)
-plot_rewards(rewards, positive_ratios)
+plot_rewards(episodic_rewards, positive_ratios)
 for metric_name, metric_values in ids_metrics.items():
     plot_metric(metric_values, metric_name, recorded_episodes)
 plot_traffic_distribution(env.benign, env.malicious)

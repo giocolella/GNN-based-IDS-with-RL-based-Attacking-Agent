@@ -246,12 +246,12 @@ env.gnn_model = gnn_model
 # Inizializziamo l'agente (DDQN)
 agent = DDQNAgent(state_size=state_size, action_size=action_size)
 optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)
-schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=0.95)
+schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=4, gamma=0.9)
 
 # Hyperparametri
 num_episodes = 1000
 batch_size = 32
-retrain_interval = 20
+retrain_interval = 50
 window_size = 10000
 
 # Liste per tracciare le metriche
