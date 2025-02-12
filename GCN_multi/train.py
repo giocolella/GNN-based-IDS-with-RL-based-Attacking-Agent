@@ -249,7 +249,7 @@ if __name__ == "__main__":
     )
 
     optimizer_gnn = optim.Adam(gnn_model.parameters(), lr=1e-3)
-    scheduler_gnn = torch.optim.lr_scheduler.StepLR(optimizer_gnn, step_size=20, gamma=0.8)
+    scheduler_gnn = torch.optim.lr_scheduler.StepLR(optimizer_gnn, step_size=4, gamma=0.9)
 
     # Environment + DQNAgent
     env = NetworkEnvironment(gnn_model=gnn_model)
@@ -267,11 +267,11 @@ if __name__ == "__main__":
 
     num_episodes = 1000
     batch_size = 64
-    retrain_interval = 10
+    retrain_interval = 50
     window_size = 10000
 
     optimizer_agent = optim.Adam(agent.model.parameters(), lr=agent.learning_rate)
-    scheduler_agent = torch.optim.lr_scheduler.StepLR(optimizer_agent, step_size=10, gamma=0.5)
+    scheduler_agent = torch.optim.lr_scheduler.StepLR(optimizer_agent, step_size=4, gamma=0.9)
 
     episodic_rewards = []
     epsilon_values = []
@@ -347,6 +347,7 @@ if __name__ == "__main__":
                 batch_size=64
             )
             scheduler_gnn.step()
+            scheduler_agent.step()
             print(f"[GNN] New LR after step: {scheduler_gnn.get_last_lr()[0]:.5f}")
 
             # valutazione

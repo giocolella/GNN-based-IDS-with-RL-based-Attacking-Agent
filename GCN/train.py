@@ -278,7 +278,7 @@ action_size = env.action_size
 # Initialize the GNN-based IDS
 gnn_model = GCNIDS(input_dim=state_size, hidden_dim=32, output_dim=1, use_dropout=True, dropout_rate=0.3)  # Enable dropout
 optimizer = optim.Adam(gnn_model.parameters(), lr=1e-2) #1e-2
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.95)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.9)
 loss_fn = torch.nn.BCEWithLogitsLoss()
 
 # Attach GNN model to the environment
@@ -287,12 +287,12 @@ env.gnn_model = gnn_model
 # Initialize the RL agent
 agent = DQNAgent(state_size=state_size, action_size=action_size)
 optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14) #0.14
-schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=0.95)
+schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=4, gamma=0.9)
 
 # Training hyperparameters
-num_episodes = 250
+num_episodes = 1000
 batch_size = 32
-retrain_interval = 10
+retrain_interval = 50
 
 # Store metrics
 episodic_rewards = []

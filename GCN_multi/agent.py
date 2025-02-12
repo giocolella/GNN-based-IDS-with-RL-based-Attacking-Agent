@@ -95,7 +95,5 @@ class DQNAgent:
             loss.backward()
             optimizer.step()
 
-        # Scheduler step (riduce lr se gamma < 1)
-        scheduler.step()
         # Decay dell'epsilon
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)

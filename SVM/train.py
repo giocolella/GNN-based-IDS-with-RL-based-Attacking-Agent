@@ -294,12 +294,12 @@ env.gnn_model = ids_model
 # Inizializza l'agente di RL
 agent = DDQNAgent(state_size=state_size, action_size=action_size)
 optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)
-schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=1)
+schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=4, gamma=0.9)
 
 # Iperparametri per il training
-num_episodes = 250
+num_episodes = 1000
 batch_size = 32
-retrain_interval = 10
+retrain_interval = 50
 
 # Variabili per la raccolta delle metriche
 episodic_rewards = []
@@ -384,6 +384,8 @@ for episode in range(1, num_episodes + 1):
         print("Retraining IDS...")
         ids_model.retrain(traffic_data, labels)
         print("IDS retraining completed.")
+
+        schedulerAgent.step()
 
         # Valutazione delle performance del IDS
         graph_data = preprocess_data(traffic_data, labels)  # Si assume che questa funzione sia definita in environment.py
