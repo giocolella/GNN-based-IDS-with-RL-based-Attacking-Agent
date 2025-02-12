@@ -351,9 +351,9 @@ if __name__ == "__main__":
             predictions = out.argmax(dim=1).cpu().numpy()
 
             accuracy = accuracy_score(labels, predictions)*100
-            precision = precision_score(labels, predictions, average="macro", zero_division=1)*100
-            recall = recall_score(labels, predictions, average="macro", zero_division=1)*100
-            f1 = f1_score(labels, predictions, average="macro", zero_division=1)*100
+            precision = precision_score(labels, predictions, average="binary", zero_division=1)*100
+            recall = recall_score(labels, predictions, average="binary", zero_division=1)*100
+            f1 = f1_score(labels, predictions, average="binary", zero_division=1)*100
             balanced_accuracy = balanced_accuracy_score(labels, predictions)*100
             mcc = matthews_corrcoef(labels, predictions)
 
