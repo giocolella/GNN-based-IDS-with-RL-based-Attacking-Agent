@@ -1,21 +1,14 @@
 import torch
 import torch.optim as optim
-import torch.nn as nn
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score,
-    f1_score, balanced_accuracy_score, matthews_corrcoef,
-    confusion_matrix
-)
-
-from GCN.environment import NetworkEnvironment
-from gnn_ids import GCNIDS, retrain_balanced, preprocess_data
-from GCN.agent import DQNAgent
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix,balanced_accuracy_score, matthews_corrcoef, roc_curve, auc, precision_recall_curve
+import numpy as np
+from environment import *
+from gnn_ids import *
+from agent import *
 import networkx as nx
+from torch_geometric.utils import to_networkx
 import matplotlib.pyplot as plt
 import pandas as pd
-import numpy as np
-import random
-
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -248,8 +241,8 @@ if __name__ == "__main__":
         dropout_rate=0.5
     )
 
-    optimizer_gnn = optim.Adam(gnn_model.parameters(), lr=1e-2)
-    scheduler_gnn = torch.optim.lr_scheduler.StepLR(optimizer_gnn, step_size=4, gamma=0.99)
+    optimizer_gnn = optim.Adam(gnn_model.parameters(), lr=1e-3)
+    scheduler_gnn = torch.optim.lr_scheduler.StepLR(optimizer_gnn, step_size=4, gamma=0.9)
 
     # Environment + DQNAgent
     env = NetworkEnvironment(gnn_model=gnn_model)
@@ -265,13 +258,13 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print("[GNN] CSV secondario non trovato, si procede senza pretraining aggiuntivo.")
 
-    num_episodes = 1000
+    num_episodes = 20
     batch_size = 64
-    retrain_interval = 50
+    retrain_interval = 10
     window_size = 10000
 
-    optimizer_agent = optim.Adam(agent.model.parameters(), lr=0.001)
-    scheduler_agent = torch.optim.lr_scheduler.StepLR(optimizer_agent, step_size=4, gamma=1)
+    optimizer_agent = optim.Adam(agent.model.parameters(), lr=agent.learning_rate)
+    scheduler_agent = torch.optim.lr_scheduler.StepLR(optimizer_agent, step_size=4, gamma=0.9)
 
     episodic_rewards = []
     epsilon_values = []
@@ -282,7 +275,7 @@ if __name__ == "__main__":
     roc_curves = []
     pr_curves = []
     traffic_data = []
-    labels_collected = []
+    labels = []
     positive_ratios = []
     ids_metrics = {
         'Accuracy': [],
@@ -322,10 +315,10 @@ if __name__ == "__main__":
 
         # Sliding window
         traffic_data.extend(env.traffic_data)
-        labels_collected.extend(env.labels)
+        labels.extend(env.labels)
         if len(traffic_data) > window_size:
             traffic_data = traffic_data[-window_size:]
-            labels_collected = labels_collected[-window_size:]
+            labels_collected = labels[-window_size:]
 
         gnn_lr_values.append(scheduler_gnn.get_last_lr()[0])
         agent_lr_values.append(scheduler_agent.get_last_lr()[0])
@@ -341,7 +334,7 @@ if __name__ == "__main__":
             retrain_balanced(
                 gnn_model,
                 traffic_data,
-                labels_collected,
+                labels,
                 optimizer_gnn,
                 epochs=20,  # piu epoche
                 batch_size=64
@@ -352,17 +345,17 @@ if __name__ == "__main__":
 
             # valutazione
             gnn_model.eval()
-            graph_data = preprocess_data(traffic_data, labels_collected)
+            graph_data = preprocess_data(traffic_data, labels)
             with torch.no_grad():
                 out = gnn_model(graph_data.x, graph_data.edge_index)
-            preds = out.argmax(dim=1).cpu().numpy()
+            predictions = out.argmax(dim=1).cpu().numpy()
 
-            acc = accuracy_score(labels_collected, preds)*100
-            prec = precision_score(labels_collected, preds, average="macro", zero_division=1)*100
-            rec = recall_score(labels_collected, preds, average="macro", zero_division=1)*100
-            f1 = f1_score(labels_collected, preds, average="macro", zero_division=1)*100
-            bal_acc = balanced_accuracy_score(labels_collected, preds)*100
-            mcc = matthews_corrcoef(labels_collected, preds)
+            accuracy = accuracy_score(labels, predictions)*100
+            precision = precision_score(labels, predictions, average="macro", zero_division=1)*100
+            recall = recall_score(labels, predictions, average="macro", zero_division=1)*100
+            f1 = f1_score(labels, predictions, average="macro", zero_division=1)*100
+            balanced_accuracy = balanced_accuracy_score(labels, predictions)*100
+            mcc = matthews_corrcoef(labels, predictions)
 
             ids_metrics['Accuracy'].append(accuracy)
             ids_metrics['Precision'].append(precision)
@@ -382,8 +375,8 @@ if __name__ == "__main__":
             env.good = 0
             env.totaltimes = 0
 
-            print(f"Acc: {acc:.2f}%, Prec: {prec:.2f}%, Recall: {rec:.2f}%, F1: {f1:.2f}%, BalAcc: {bal_acc:.2f}%, MCC: {mcc:.3f}")
-            cm = confusion_matrix(labels_collected, preds)
+            print(f"Acc: {accuracy:.2f}%, Prec: {precision:.2f}%, Recall: {recall:.2f}%, F1: {f1:.2f}%, BalAcc: {balanced_accuracy:.2f}%, MCC: {mcc:.3f}")
+            cm = confusion_matrix(labels, predictions)
             print("Confusion Matrix:")
             print(cm)
 
@@ -394,5 +387,3 @@ if __name__ == "__main__":
         plot_metric(metric_values, metric_name, recorded_episodes)
     plot_traffic_distribution(env.benign, env.malicious)
     plot_agent_loss(agents_losses)
-    plot_learning_rate(gnn_lr, "GNN")
-    plot_learning_rate(agent_lr, "RL Agent")

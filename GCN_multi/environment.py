@@ -14,6 +14,8 @@ class NetworkEnvironment:
         self.traffic_data = []
         self.labels = []
         self.edges = []
+        self.benign = 0
+        self.malicious = 0
 
         self.good = 0
         self.totaltimes = 0
@@ -42,6 +44,13 @@ class NetworkEnvironment:
             self.gnn_model.train()
         # Se la GNN ha output vettoriale, prendiamo l'ultimo
         detection_result = detection_probs[-1].item() if detection_probs.ndim == 1 else detection_probs[-1].mean().item()
+
+        # Calculate current traffic distribution (benign vs malicious)
+        benign_count = self.labels.count(0)
+        malicious_count = self.labels.count(1)
+        total_count = benign_count + malicious_count
+        self.benign += benign_count
+        self.malicious += malicious_count
 
         # Soglia
         threshold = 0.6
