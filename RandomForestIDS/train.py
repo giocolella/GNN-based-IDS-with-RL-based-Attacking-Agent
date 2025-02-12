@@ -12,9 +12,11 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from sklearn.manifold import TSNE
 from sklearn.utils import shuffle
-from environment import *
-from agent import *
-from gnn_ids import *
+
+# Importa l'ambiente e gli agent/id.
+from environment import NetworkEnvironment
+from agent import DDQNAgent
+from gnn_ids import RFIDS
 
 def set_seed(seed):
     random.seed(seed)
@@ -32,12 +34,11 @@ def set_learning_rate(optimizer, new_lr):
 
 def load_csv_data(file_path):
     data = pd.read_csv(file_path)
-    features = data.iloc[:, :-1].values  # All columns except the last one
+    features = data.iloc[:, :-1].values  # Tutte le colonne tranne l'ultima
     labels = data['Label'].apply(lambda x: 0 if x == "Benign" else 1).values
     scaler = StandardScaler()
     features = scaler.fit_transform(features)
     return train_test_split(features, labels, test_size=0.2, random_state=42)
-
 
 def pretrain_agentMSE(agent, features, labels, epochs=1, batch_size=32):
     optimizer = optim.Adam(agent.model.parameters(), lr=agent.learning_rate)
@@ -69,27 +70,61 @@ def plot_traffic_distribution(benign, malicious):
     plt.tight_layout()
     plt.show()
 
-
-# Function to plot reward trends with a trend line
-def plot_rewards(rewards, numEp):
-    episodes = numEp # X-axis (episode numbers)
-
-    # Compute trend line (linear regression)
-    coeffs = np.polyfit(episodes, rewards, 1)  # Fit a linear model (degree 1)
-    trend = np.poly1d(coeffs)  # Create polynomial function from coefficients
-
+def plot_learning_curve(probabilities, window_size=50):
+    """
+    Plotta la learning curve dell'agente RL, visualizzando la probabilità di successo per episodio.
+    """
+    episodes = np.arange(1, len(probabilities) + 1)
     plt.figure(figsize=(10, 6))
-    plt.plot(rewards, label="Total Reward", alpha=0.7)  # Original rewards
-    plt.plot(episodes, trend(episodes), color="orange", linewidth=2, label="Trend")  # Trend line
 
-    # Labels and formatting
-    plt.xlabel("Episode")
-    plt.ylabel("Total Reward")
-    plt.title("Episodic Rewards")
-    plt.grid()
+    # Plot dei valori originali
+    plt.plot(episodes, probabilities, label="Probabilità di Successo", alpha=0.5)
+
+    # Calcolo e plot della media mobile se la lunghezza dei dati lo consente
+    if len(probabilities) >= window_size:
+        smoothed = np.convolve(probabilities, np.ones(window_size) / window_size, mode='valid')
+        plt.plot(episodes[window_size - 1:], smoothed, color='orange', linewidth=2,
+                 label=f"Media Mobile (finestra={window_size})")
+
+    plt.xlabel("Episodi", fontsize=12)
+    plt.ylabel("Probabilità", fontsize=12)
+    plt.title("Learning Curve: Probabilità di Successo per Episodio", fontsize=14)
+    plt.grid(True)
     plt.legend()
-
+    plt.tight_layout()
     plt.show()
+
+#########################################################################
+# NUOVA FUNZIONE PER PLOT REWARDS SU DUE ASSI (TWIN AXIS)
+#########################################################################
+def plot_rewards(rewards, positive_ratios):
+    """
+    Plot dei:
+      - (asse sinistro, blu)  Total Reward
+      - (asse destro, arancione) Positive/Total Reward Ratio
+    """
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+
+    # Asse sinistro: Total Reward
+    color_left = 'tab:blue'
+    ax1.set_xlabel("Episode")
+    ax1.set_ylabel("Total Reward", color=color_left)
+    ax1.plot(rewards, color=color_left, label="Total Reward")
+    ax1.tick_params(axis='y', labelcolor=color_left)
+    ax1.grid(True)
+
+    # Asse destro: Ratio
+    ax2 = ax1.twinx()
+    color_right = 'tab:orange'
+    ax2.set_ylabel("Positive/Total Reward Ratio", color=color_right)
+    ax2.plot(positive_ratios, color=color_right, label="Positive/Total Reward Ratio")
+    ax2.tick_params(axis='y', labelcolor=color_right)
+
+    # Titolo e layout
+    plt.title("Episodic Rewards and Positive Ratio")
+    fig.tight_layout()
+    plt.show()
+#########################################################################
 
 def plot_epsilon_decay(epsilon_values):
     """Plots the decay of epsilon (exploration parameter) over episodes."""
@@ -195,35 +230,39 @@ def plot_metric(metric_values, metric_name, episodes):
     plt.tight_layout()
     plt.show()
 
+
+# Impostiamo il seed per la riproducibilità
 set_seed(16)
 
-# Initialize the environment.
+# Inizializziamo l'ambiente
 env = NetworkEnvironment(gnn_model=None)
 state_size = env.state_size
 action_size = env.action_size
 
-# Initialize the IDS as a Random Forest classifier.
+# Inizializziamo l'IDS (Random Forest)
 gnn_model = RFIDS()
 env.gnn_model = gnn_model
 
-# Initialize the RL agent.
+# Inizializziamo l'agente (DDQN)
 agent = DDQNAgent(state_size=state_size, action_size=action_size)
-optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)#1e-2
+optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)
 schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=0.95)
 
-# Training hyperparameters.
-num_episodes = 40
+# Hyperparametri
+num_episodes = 1000
 batch_size = 32
-retrain_interval = 10
+retrain_interval = 20
+window_size = 10000
 
-# Metrics and tracking.
+# Liste per tracciare le metriche
 episodic_rewards = []
 epsilon_values = []
 traffic_data = []
 labels = []
-recorded_episodes = []  # Episodes at which IDS retraining occurred.
-roc_curves = []  # To accumulate ROC curve data.
-pr_curves = []  # To accumulate Precision-Recall curve data.
+episodic_probabilities = []  # Per la plot di learning_curve
+recorded_episodes = []       # Episodi in cui è avvenuto retraining IDS
+roc_curves = []
+pr_curves = []
 ids_metrics = {
     'Accuracy': [],
     'Precision': [],
@@ -232,25 +271,27 @@ ids_metrics = {
     'Balanced Accuracy': [],
     'Mcc': []
 }
-agent_lr = []  # To track RL agent learning rate (schedulerAgent).
+agent_lr = []
 
-window_size = 10000
+# *** Nuova lista per i rapporti "reward positivi / reward totali"
+positive_ratios = []
 
-# Load and preprocess the dataset for pretraining the RL agent.
-X_train, X_test, y_train, y_test = load_csv_data("C:/Users/colg/Desktop/mergedfiltered.csv")
+# Carichiamo e preprocessiamo il dataset per il pretrain del RL agent
+X_train, X_test, y_train, y_test = load_csv_data("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/pretrain_dataset.csv")
 
-# Pre-train the RL agent.
+# Pre-train dell'agente RL
 pretrain_agentMSE(agent, X_train, y_train)
 
-# Pretrain the IDS classifier (Random Forest) using a CSV dataset.
-gnn_model.pretrain("C:/Users/colg/Desktop/cleaned_ids2018_sampledfiltered.csv")
+# Pre-train dell'IDS (Random Forest) con un altro CSV
+gnn_model.pretrain("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/dataset.csv")
 print("Pre-training Completed")
 
-# Main training loop.
+# Loop principale di training
 for episode in range(1, num_episodes + 1):
     state = env.reset()
     total_reward = 0
     actions_taken = []
+    correct_actions = 0
 
     for step in range(50):
         action = agent.act(state)
@@ -259,48 +300,57 @@ for episode in range(1, num_episodes + 1):
         agent.remember(state, action, reward, next_state, done)
         total_reward += reward
         state = next_state
+
+        # Tracciamo azioni con reward > 0 per la success probability
+        if reward > 0:
+            correct_actions += 1
+        episode_success_prob = correct_actions / (step + 1)
+        episodic_probabilities.append(episode_success_prob)
+
         if done:
             break
 
     episodic_rewards.append(total_reward)
     epsilon_values.append(agent.epsilon)
-    print(f"Episode {episode}/{num_episodes}, Total Reward: {total_reward:.1f}")
 
-    # (Optional) Print action counts.
-    benign_count = actions_taken.count(0)
-    malicious_count = actions_taken.count(1)
-    # print(f"Actions Taken - Benign: {benign_count}, Malicious: {malicious_count}")
+    # Calcolo del rapporto (reward positivi / totali)
+    if env.totaltimes > 0:
+        ratio = env.good / env.totaltimes
+    else:
+        ratio = 0
+    positive_ratios.append(ratio)
 
-    # Train the RL agent.
+    print(f"Episode {episode}/{num_episodes}, Total Reward: {total_reward:.1f}, Ratio: {ratio:.3f}")
+
+    # Train del RL agent se ha abbastanza sample
     if len(agent.memory) > batch_size:
         agent.replay(batch_size, optimizerAgent, schedulerAgent, torch.nn.MSELoss())
 
-    # Track RL agent learning rate.
+    # Tracciamo il learning rate corrente
     agent_lr.append(schedulerAgent.get_last_lr()[0])
 
-    # Collect traffic data for retraining.
+    # Raccogliamo dati di traffico per l'IDS
     traffic_data.extend(env.traffic_data)
     labels.extend(env.labels)
     if len(traffic_data) > window_size:
         traffic_data = traffic_data[-window_size:]
         labels = labels[-window_size:]
 
-    # Retrain the IDS every retrain_interval episodes.
+    # Retrain dell'IDS ogni retrain_interval episodi
     if episode % retrain_interval == 0:
         agent.update_target_network()
         recorded_episodes.append(episode)
         print("Retraining IDS (Random Forest)...")
 
-        # Shuffle and limit the data to avoid overfitting.
+        # Shuffle dei dati (ed evitiamo overfitting riducendo a 10k sample)
         traffic_data, labels = shuffle(traffic_data, labels)
         sample_size = min(len(traffic_data), 10000)
         gnn_model.retrain(traffic_data[:sample_size], labels[:sample_size])
 
-        # Evaluate IDS performance.
+        # Valutazione dell'IDS
         X_all = np.array(traffic_data, dtype=np.float32)
         X_tensor = torch.tensor(X_all)
         logits = gnn_model.forward(X_tensor)
-        # Use sigmoid to convert outputs to probabilities, then round to obtain binary predictions.
         predictions = torch.sigmoid(logits).detach().round().squeeze().numpy()
 
         accuracy = accuracy_score(labels, predictions) * 100
@@ -324,25 +374,28 @@ for episode in range(1, num_episodes + 1):
         print("Confusion Matrix:")
         print(cm)
 
-        # Compute ROC and Precision-Recall curves
+        # Curve ROC e Precision-Recall
         fpr, tpr, _ = roc_curve(labels, predictions)
         precisions, recalls, _ = precision_recall_curve(labels, predictions)
         roc_auc = auc(fpr, tpr)
         roc_curves.append((episode, fpr, tpr, roc_auc))
         pr_curves.append((episode, recalls, precisions))
 
-        # Clear collected traffic data for the next retraining interval
+        # Svuotiamo i dati raccolti per il prossimo ciclo
         env.traffic_data = []
         env.labels = []
 
 print("Training complete.")
 
+# Plot finali
 plot_cumulative_roc_curve(roc_curves)
 plot_cumulative_precision_recall_curve(pr_curves)
 
-plot_rewards(episodic_rewards)
-plot_epsilon_decay(epsilon_values)
+# Ora la nuova plot_rewards con 2 assi
+plot_rewards(episodic_rewards, positive_ratios)
 
+plot_learning_curve(episodic_probabilities, window_size=5)
+plot_epsilon_decay(epsilon_values)
 plot_learning_rate(agent_lr, "RL Agent")
 
 plot_traffic_distribution(env.benign, env.malicious)

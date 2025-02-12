@@ -279,7 +279,7 @@ ids_model = XGBIDS()
 env.gnn_model = ids_model
 
 # Inizializza l'agente di RL
-agent = DQNAgent(state_size=state_size, action_size=action_size)
+agent = DDQNAgent(state_size=state_size, action_size=action_size)
 optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.14)
 schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=10, gamma=1)
 
