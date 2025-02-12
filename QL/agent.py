@@ -8,7 +8,7 @@ class QLearningAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = deque(maxlen=5000000)  # Large memory for diverse experiences
+        self.memory = deque(maxlen=1000000)  # Large memory for diverse experiences
         self.gamma = 0.99  # Discount factor
         self.epsilon = 1.0  # Initial exploration rate
         self.epsilon_min = 0.01  # Minimum exploration rate

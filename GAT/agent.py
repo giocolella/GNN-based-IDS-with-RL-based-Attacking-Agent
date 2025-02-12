@@ -9,7 +9,7 @@ class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = deque(maxlen=5000000) #Increasing Memory Size Allows the agent to retain more diverse experiences (less overfitting) for training but Can increase computational cost and memory usage
+        self.memory = deque(maxlen=1000000) #Increasing Memory Size Allows the agent to retain more diverse experiences (less overfitting) for training but Can increase computational cost and memory usage
         self.gamma = 0.99 #Determines how much the agent values future rewards compared to immediate rewards. Values closer to 1.0 prioritize long-term rewards, while values closer to 0.0 prioritize immediate rewards
         self.epsilon = 1.0 #previously 1.0
         self.epsilon_min = 0.01
