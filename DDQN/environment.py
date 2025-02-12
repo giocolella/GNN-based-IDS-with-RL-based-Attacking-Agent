@@ -22,6 +22,10 @@ class NetworkEnvironment:
         # To store relationships between traffic instances (for edges)
         self.edges = []
 
+        self.good = 0
+        self.totaltimes = 0
+
+
     def reset(self):
         self.current_state = np.random.rand(self.state_size)
         return self.current_state
@@ -76,15 +80,20 @@ class NetworkEnvironment:
 
         if is_malicious:
             # For malicious traffic, if the IDS fails to flag it reward the agent but if flagged, penalize
-            if detection_result <= 0.6:
+            if detection_result <= 0.5:
                 reward = malicious_incorrect_reward  # Reward for evading detection
             else:
                 reward = malicious_correct_penalty  # Penalty for being detected
         else:
-            if detection_result > 0.6:
+            if detection_result > 0.5:
                 reward = benign_incorrect_penalty  # Penalty for misclassifying benign traffic
             else:
                 reward = benign_correct_reward  # Reward for correct classification
+
+        # Aggiorno contatori buoni e totali
+        if reward > 0:
+            self.good += 1
+        self.totaltimes += 1
 
         # Terminate episode if too many traffic samples have been collected
         done = len(self.traffic_data) > 5000

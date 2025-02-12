@@ -10,7 +10,7 @@ from sklearn.metrics import (
 from GCN.environment import NetworkEnvironment
 from gnn_ids import GCNIDS, retrain_balanced, preprocess_data
 from GCN.agent import DQNAgent
-
+import networkx as nx
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -53,16 +53,68 @@ def pretrain_agent(agent, features, labels, epochs=2, batch_size=64):
             optimizer.step()
         print(f"[Agent Pretrain] Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}")
 
-def plot_rewards(rewards):
-    plt.figure(figsize=(10, 6))
-    plt.plot(rewards, label="Total Reward")
-    plt.xlabel("Episode")
-    plt.ylabel("Total Reward")
-    plt.title("Episodic Rewards")
-    plt.grid()
-    plt.legend()
+# Function to visualize the graph structure
+def visualize_graph(graph_data, predictions=None):
+    G = to_networkx(graph_data, to_undirected=True)
+    pos = nx.spring_layout(G)
+
+    plt.figure(figsize=(10, 8))
+    nx.draw(G, pos, with_labels=False, node_size=300, node_color="lightblue", edge_color="gray")
+
+    if predictions is not None:
+        node_colors = ["green" if label == 0 else "red" for label in predictions]
+        nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=300)
+
+    plt.title("Graph Structure Visualization")
     plt.show()
 
+def plot_traffic_distribution(benign, malicious):
+    # Data for the plot
+    labels = ['Benign', 'Malicious']
+    frequencies = [benign, malicious]
+
+    # Create the bar plot
+    plt.figure(figsize=(8, 6))
+    plt.bar(labels, frequencies, color=['green', 'red'], alpha=0.7)
+
+    # Add labels and title
+    plt.xlabel('Traffic Type', fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.title('Traffic Distribution (Benign vs Malicious)', fontsize=14)
+
+    # Annotate values on top of the bars
+    for i, freq in enumerate(frequencies):
+        plt.text(i, freq + 0.01 * max(frequencies), str(freq), ha='center', fontsize=10)
+
+    # Display the plot
+    plt.tight_layout()
+    plt.show()
+
+# Function to plot reward trends
+def plot_rewards(rewards, positive_ratios):
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+
+    # Asse sinistro: Total Reward
+    color_left = 'tab:blue'
+    ax1.set_xlabel("Episode")
+    ax1.set_ylabel("Total Reward", color=color_left)
+    ax1.plot(rewards, color=color_left, label="Total Reward")
+    ax1.tick_params(axis='y', labelcolor=color_left)
+    ax1.grid(True)
+
+    # Asse destro: Ratio
+    ax2 = ax1.twinx()
+    color_right = 'tab:orange'
+    ax2.set_ylabel("Positive/Total Reward Ratio", color=color_right)
+    ax2.plot(positive_ratios, color=color_right, label="Positive/Total Reward Ratio")
+    ax2.tick_params(axis='y', labelcolor=color_right)
+
+    # Titolo e layout
+    plt.title("Episodic Rewards and Positive Ratio")
+    fig.tight_layout()
+    plt.show()
+
+# Function to plot Epsilon Decay
 def plot_epsilon_decay(epsilon_values):
     plt.figure(figsize=(10, 6))
     plt.plot(epsilon_values, label="Epsilon Value")
@@ -73,14 +125,109 @@ def plot_epsilon_decay(epsilon_values):
     plt.legend()
     plt.show()
 
+# Function to plot RL agent loss
+def plot_agent_loss(losses):
+    plt.figure(figsize=(10, 6))
+    plt.plot(losses, label="Loss")
+    plt.xlabel("Episode")
+    plt.ylabel("Loss")
+    plt.title("RL Agent Loss")
+    plt.grid()
+    plt.legend()
+    plt.show()
+
 def plot_learning_rate(lr_values, label):
     plt.figure(figsize=(10, 6))
     plt.plot(lr_values, marker='o', label=f"{label} Learning Rate")
-    plt.xlabel("Episode")
-    plt.ylabel("Learning Rate")
-    plt.title(f"{label} Learning Rate Progression")
+    plt.xlabel("Episode", fontsize=12)
+    plt.ylabel("Learning Rate", fontsize=12)
+    plt.title(f"{label} Learning Rate Progression", fontsize=14)
     plt.grid(True)
     plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def plot_roc_curve(fpr,tpr,roc_auc):
+    # Plot ROC curve
+    plt.figure(figsize=(10, 6))
+    plt.plot(fpr, tpr, label=f"AUC = {roc_auc:.2f}")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def plot_precision_recall_curve(recall_vals,precision_vals):
+    # Plot Precision-Recall curve
+    plt.figure(figsize=(10, 6))
+    plt.plot(recall_vals, precision_vals, label="Precision-Recall Curve")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Precision-Recall Curve")
+    plt.grid()
+    plt.legend()
+    plt.show()
+
+def plot_cumulative_roc_curve(roc_curves):
+    plt.figure(figsize=(10, 6))
+    for (ep, fpr, tpr, roc_auc) in roc_curves:
+        plt.plot(fpr, tpr, label=f"Episode {ep} (AUC = {roc_auc:.2f})")
+
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("Cumulative ROC Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def plot_cumulative_precision_recall_curve(pr_curves):
+    plt.figure(figsize=(10, 6))
+    for (ep, recall, precision) in pr_curves:
+        plt.plot(recall, precision, label=f"Episode {ep}")
+
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Cumulative Precision-Recall Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+def visualize_single_dim_embeddings(embeddings, labels):
+    plt.figure(figsize=(12, 6))
+    plt.scatter(range(len(embeddings)), embeddings[:, 0], c=labels, cmap="coolwarm", alpha=0.7)
+    plt.colorbar(label="Node Labels")
+    plt.title("Single-Dimensional Node Embedding Visualization")
+    plt.xlabel("Node Index")
+    plt.ylabel("Embedding Value")
+    plt.grid()
+    plt.show()
+
+# Function to plot degree distribution
+def plot_degree_distribution(graph_data):
+    G = to_networkx(graph_data, to_undirected=True)
+    degrees = [val for (node, val) in G.degree()]
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(degrees, bins=20, color="blue", alpha=0.7)
+    plt.title("Degree Distribution")
+    plt.xlabel("Degree")
+    plt.ylabel("Frequency")
+    plt.grid()
+    plt.show()
+
+def plot_metric(metric_values, metric_name, episodes):
+    plt.figure(figsize=(10, 6))
+    plt.plot(episodes, metric_values, marker='o', label=f"{metric_name} Over Episodes")
+    plt.xlabel("Episode", fontsize=12)
+    plt.ylabel(metric_name, fontsize=12)
+    plt.title(f"{metric_name} Progression", fontsize=14)
+    plt.grid(True)
+    plt.legend()
+
+    # Ensure x-axis ticks correspond to the provided episode numbers
+    plt.xticks(episodes)
+
     plt.tight_layout()
     plt.show()
 
@@ -130,9 +277,21 @@ if __name__ == "__main__":
     epsilon_values = []
     gnn_lr_values = []
     agent_lr_values = []
-
+    agents_losses = []
+    recorded_episodes = []
+    roc_curves = []
+    pr_curves = []
     traffic_data = []
     labels_collected = []
+    positive_ratios = []
+    ids_metrics = {
+        'Accuracy': [],
+        'Precision': [],
+        'Recall': [],
+        'F1 Score': [],
+        'Balanced Accuracy': [],
+        'Mcc': []
+    }
 
     # Ciclo di training
     for episode in range(1, num_episodes + 1):
@@ -150,6 +309,13 @@ if __name__ == "__main__":
 
         episodic_rewards.append(total_reward)
         epsilon_values.append(agent.epsilon)
+
+        # Calcolo del rapporto (reward positivi / totali)
+        if env.totaltimes > 0:
+            ratio = env.good / env.totaltimes
+        else:
+            ratio = 0
+        positive_ratios.append(ratio)
 
         if len(agent.memory) > batch_size:
             agent.replay(batch_size, optimizer_agent, scheduler_agent, nn.MSELoss())
@@ -197,13 +363,35 @@ if __name__ == "__main__":
             bal_acc = balanced_accuracy_score(labels_collected, preds)*100
             mcc = matthews_corrcoef(labels_collected, preds)
 
+            ids_metrics['Accuracy'].append(accuracy)
+            ids_metrics['Precision'].append(precision)
+            ids_metrics['Recall'].append(recall)
+            ids_metrics['F1 Score'].append(f1)
+            ids_metrics['Balanced Accuracy'].append(balanced_accuracy)
+            ids_metrics['Mcc'].append(mcc)
+
+            fpr, tpr, _ = roc_curve(labels, predictions)
+            precisions, recalls, _ = precision_recall_curve(labels, predictions)
+            roc_auc = auc(fpr, tpr)
+            roc_curves.append((episode, fpr, tpr, roc_auc))
+            pr_curves.append((episode, recalls, precisions))
+
+            env.traffic_data = []
+            env.labels = []
+            env.good = 0
+            env.totaltimes = 0
+
             print(f"Acc: {acc:.2f}%, Prec: {prec:.2f}%, Recall: {rec:.2f}%, F1: {f1:.2f}%, BalAcc: {bal_acc:.2f}%, MCC: {mcc:.3f}")
             cm = confusion_matrix(labels_collected, preds)
             print("Confusion Matrix:")
             print(cm)
 
-    # Plot finali
-    plot_rewards(episodic_rewards)
-    plot_epsilon_decay(epsilon_values)
-    plot_learning_rate(gnn_lr_values, label="GNN")
-    plot_learning_rate(agent_lr_values, label="Agent")
+    plot_cumulative_roc_curve(roc_curves)
+    plot_cumulative_precision_recall_curve(pr_curves)
+    plot_rewards(rewards, positive_ratios)
+    for metric_name, metric_values in ids_metrics.items():
+        plot_metric(metric_values, metric_name, recorded_episodes)
+    plot_traffic_distribution(env.benign, env.malicious)
+    plot_agent_loss(agents_losses)
+    plot_learning_rate(gnn_lr, "GNN")
+    plot_learning_rate(agent_lr, "RL Agent")

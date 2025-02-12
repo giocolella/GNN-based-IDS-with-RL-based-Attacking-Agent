@@ -13,7 +13,7 @@ class NetworkEnvironment:
         self.k_neighbors = 5
 
         # Inizializziamo variabili di stato e contatori
-        self.current_state = None
+        self.current_state =self.reset()
         self.traffic_data = []
         self.labels = []
         self.edges = []
@@ -21,28 +21,9 @@ class NetworkEnvironment:
         self.malicious = 0
         self.good = 0
         self.totaltimes = 0
-
-        # Esegui subito un reset
-        self.reset()
 
     def reset(self):
-        """
-        Ripristina lo stato dell'ambiente per un nuovo episodio.
-        Se vuoi accumulare i dati su più episodi, rimuovi la pulizia di traffic_data, labels, ecc.
-        """
         self.current_state = np.random.rand(self.state_size)
-
-        # Se vuoi **azzerare** i contatori e i dati a ogni inizio episodio:
-        self.traffic_data = []
-        self.labels = []
-        self.edges = []
-        self.benign = 0
-        self.malicious = 0
-
-        # Questi due contatori servono per calcolare ratio: self.good / self.totaltimes
-        self.good = 0
-        self.totaltimes = 0
-
         return self.current_state
 
     def step(self, action):

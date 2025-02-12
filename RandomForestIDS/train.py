@@ -277,13 +277,13 @@ agent_lr = []
 positive_ratios = []
 
 # Carichiamo e preprocessiamo il dataset per il pretrain del RL agent
-X_train, X_test, y_train, y_test = load_csv_data("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/pretrain_dataset.csv")
+X_train, X_test, y_train, y_test = load_csv_data("C:/Users/colg/Desktop/mergedfiltered.csv")
 
 # Pre-train dell'agente RL
 pretrain_agentMSE(agent, X_train, y_train)
 
 # Pre-train dell'IDS (Random Forest) con un altro CSV
-gnn_model.pretrain("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/dataset.csv")
+gnn_model.pretrain("C:/Users/colg/Desktop/cleaned_ids2018_sampledfiltered.csv")
 print("Pre-training Completed")
 
 # Loop principale di training
@@ -384,6 +384,8 @@ for episode in range(1, num_episodes + 1):
         # Svuotiamo i dati raccolti per il prossimo ciclo
         env.traffic_data = []
         env.labels = []
+        env.good = 0
+        env.totaltimes = 0
 
 print("Training complete.")
 

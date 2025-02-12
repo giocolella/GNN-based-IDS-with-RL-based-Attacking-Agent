@@ -15,6 +15,9 @@ class NetworkEnvironment:
         self.labels = []
         self.edges = []
 
+        self.good = 0
+        self.totaltimes = 0
+
     def reset(self):
         self.current_state = np.random.rand(self.state_size)
         # eventuale reset dei buffer
@@ -56,6 +59,11 @@ class NetworkEnvironment:
                 reward -= 2.0  # classifica erroneamente come malevolo
             else:
                 reward += 4.0  # net +4 se benigno e considerato benigno
+
+        # Aggiorno contatori buoni e totali
+        if reward > 0:
+            self.good += 1
+        self.totaltimes += 1
 
         done = (len(self.traffic_data) > 5000)
         next_state = np.random.rand(self.state_size)

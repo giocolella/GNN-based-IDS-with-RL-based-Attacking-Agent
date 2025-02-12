@@ -22,27 +22,8 @@ class NetworkEnvironment:
         self.good = 0
         self.totaltimes = 0
 
-        # Esegui subito un reset
-        self.reset()
-
     def reset(self):
-        """
-        Ripristina lo stato dell'ambiente per un nuovo episodio.
-        Se vuoi accumulare i dati su più episodi, rimuovi la pulizia di traffic_data, labels, ecc.
-        """
         self.current_state = np.random.rand(self.state_size)
-
-        # Se vuoi **azzerare** i contatori e i dati a ogni inizio episodio:
-        self.traffic_data = []
-        self.labels = []
-        self.edges = []
-        self.benign = 0
-        self.malicious = 0
-
-        # Questi due contatori servono per calcolare ratio: self.good / self.totaltimes
-        self.good = 0
-        self.totaltimes = 0
-
         return self.current_state
 
     def step(self, action):
@@ -145,7 +126,7 @@ class NetworkEnvironment:
 
             return np.array(list(features.values()))
 
-    def get_edge_index(self, k=8, distance_threshold=10.0):
+    def get_edge_index(self, k=5, distance_threshold=10.0):
         """
         Costruisce edge_index (tensore PyTorch 2 x N) basato sui vicini più prossimi
         e su una distanza massima.

@@ -93,7 +93,8 @@ class RFIDS:
         # For benign memory, always keep the core samples.
         if len(self.memory_benign) > max_per_buffer:
             # First, separate out the core samples from the rest.
-            non_core = [s for s in self.memory_benign if s not in self.core_benign]
+            #non_core = [s for s in self.memory_benign if s not in self.core_benign]
+            non_core = [s for s in self.memory_benign if not any(np.array_equal(s, c) for c in self.core_benign)]
             # Determine how many non-core samples we can keep so that core samples are preserved.
             max_non_core = max_per_buffer - len(self.core_benign)
             if len(non_core) > max_non_core:

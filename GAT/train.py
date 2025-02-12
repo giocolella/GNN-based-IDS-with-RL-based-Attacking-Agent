@@ -127,14 +127,27 @@ def plot_traffic_distribution(benign, malicious):
     plt.show()
 
 # Function to plot reward trends
-def plot_rewards(rewards):
-    plt.figure(figsize=(10, 6))
-    plt.plot(rewards, label="Total Reward")
-    plt.xlabel("Episode")
-    plt.ylabel("Total Reward")
-    plt.title("Episodic Rewards")
-    plt.grid()
-    plt.legend()
+def plot_rewards(rewards, positive_ratios):
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+
+    # Asse sinistro: Total Reward
+    color_left = 'tab:blue'
+    ax1.set_xlabel("Episode")
+    ax1.set_ylabel("Total Reward", color=color_left)
+    ax1.plot(rewards, color=color_left, label="Total Reward")
+    ax1.tick_params(axis='y', labelcolor=color_left)
+    ax1.grid(True)
+
+    # Asse destro: Ratio
+    ax2 = ax1.twinx()
+    color_right = 'tab:orange'
+    ax2.set_ylabel("Positive/Total Reward Ratio", color=color_right)
+    ax2.plot(positive_ratios, color=color_right, label="Positive/Total Reward Ratio")
+    ax2.tick_params(axis='y', labelcolor=color_right)
+
+    # Titolo e layout
+    plt.title("Episodic Rewards and Positive Ratio")
+    fig.tight_layout()
     plt.show()
 
 # Function to plot Epsilon Decay
@@ -292,6 +305,7 @@ gnn_lr = []
 agent_lr = []
 roc_curves = []
 pr_curves = []
+positive_ratios = []
 ids_metrics = {
     'Accuracy': [],
     'Precision': [],
@@ -328,6 +342,14 @@ for episode in range(1, num_episodes + 1):
             break
     episodic_rewards.append(total_reward)
     epsilon_values.append(agent.epsilon)
+
+    # Calcolo del rapporto (reward positivi / totali)
+    if env.totaltimes > 0:
+        ratio = env.good / env.totaltimes
+    else:
+        ratio = 0
+    positive_ratios.append(ratio)
+
     print(f"Episode {episode}/{num_episodes}, Total Reward: {total_reward:.1f}")
 
     # Train the agent
@@ -435,13 +457,15 @@ for episode in range(1, num_episodes + 1):
 
         env.traffic_data = []
         env.labels = []
+        env.good = 0
+        env.totaltimes = 0
 
 plot_cumulative_roc_curve(roc_curves)
 plot_cumulative_precision_recall_curve(pr_curves)
+plot_rewards(rewards, positive_ratios)
 for metric_name, metric_values in ids_metrics.items():
     plot_metric(metric_values, metric_name, recorded_episodes)
 plot_traffic_distribution(env.benign, env.malicious)
-plot_rewards(episodic_rewards)
 plot_agent_loss(agents_losses)
 plot_epsilon_decay(epsilon_values)
 plot_learning_rate(gnn_lr, "GNN")

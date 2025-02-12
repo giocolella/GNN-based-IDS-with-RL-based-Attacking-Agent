@@ -22,6 +22,10 @@ class NetworkEnvironment:
         # To store relationships between traffic instances (for edges)
         self.edges = []
 
+        self.good = 0
+        self.totaltimes = 0
+
+
     def reset(self):
         self.current_state = np.random.rand(self.state_size)
         return self.current_state
@@ -280,7 +284,10 @@ class NetworkEnvironment:
             else:
                 reward = benign_correct_reward  # Reward for correct classification
 
-        #print(f"Debug: benign_ratio={benign_ratio:.2f}, imbalance_factor={imbalance_factor:.2f}")
+        # Aggiorno contatori buoni e totali
+        if reward > 0:
+            self.good += 1
+        self.totaltimes += 1
 
         # Terminate episode if too many traffic samples have been collected
         done = len(self.traffic_data) > 5000
