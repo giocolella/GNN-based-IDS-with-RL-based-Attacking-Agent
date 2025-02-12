@@ -8,16 +8,15 @@ class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        # Replay buffer grande ma non eccessivo: 1M (puoi alzare o abbassare)
+        # Replay buffer con capacità elevata (maxlen=1M)
         self.memory = deque(maxlen=1000000)
-        self.gamma = 0.99   # fattore di sconto
-        self.epsilon = 1.0  # esplorazione iniziale
+        self.gamma = 1   # fattore di sconto
+        self.epsilon = 1.0  # tasso di esplorazione iniziale
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
-        # Abbassiamo ulteriormente il lr dell'agente
-        self.learning_rate = 1e-4
+        self.learning_rate = 0.001
 
-        # Costruzione modelli
+        # Costruzione dei modelli
         self.model = self.build_model()
         self.target_model = self.build_model()
         self.update_target_network()
@@ -74,7 +73,7 @@ class DQNAgent:
             state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
             next_state_tensor = torch.tensor(next_state, dtype=torch.float32).unsqueeze(0)
 
-            # Normalizza e clampa il reward
+            # Normalizza e limita il reward
             normalized_reward = np.clip(
                 reward / (self.reward_norm_factor + 1e-8),
                 -5,
@@ -85,7 +84,6 @@ class DQNAgent:
                 with torch.no_grad():
                     target += self.gamma * torch.max(self.target_model(next_state_tensor)).item()
 
-            # Aggiornamento
             target_f = self.model(state_tensor).detach().clone()
             target_f[0][action] = target
 
@@ -95,5 +93,5 @@ class DQNAgent:
             loss.backward()
             optimizer.step()
 
-        # Decay dell'epsilon
+        # Aggiornamento dell'epsilon
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
