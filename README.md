@@ -1,5 +1,5 @@
 # 🧐Sistema di Rilevamento delle Intrusioni (IDS) Basato su GNN ed Attaccante basato su Reinforcement Learning🚨
-
+Sviluppato da Giorgio Colella e Maria Caterina D'Aloia
 ## Descrizione del Progetto
 
 Questo progetto implementa un **Sistema di Rilevamento delle Intrusioni (IDS)** basato su **Graph Neural Networks (GNN)** e un **agente d'attacco basato su Reinforcement Learning (RL)**. L'obiettivo è simulare un ambiente in cui l'IDS apprende a rilevare attacchi informatici mentre un agente RL cerca di eludere il rilevamento generando traffico malevolo sempre più sofisticato.
