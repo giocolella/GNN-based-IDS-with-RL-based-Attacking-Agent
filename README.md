@@ -78,13 +78,13 @@ pip install gym
    
    **Esempio per GAT:**
    ```bash
-   cd GNN_IDS/GAT
+   cd GAT
    python train.py
    ```
    
    **Esempio per DDQN:**
    ```bash
-   cd RL_Agents/DDQN
+   cd DDQN
    python train.py
    ```
 
