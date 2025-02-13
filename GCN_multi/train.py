@@ -316,6 +316,7 @@ if __name__ == "__main__":
 
         # Ogni retrain_interval, aggiorno la target network e retraino la GNN
         if episode % retrain_interval == 0:
+            recorded_episodes.append(episode)
             agent.update_target_network()
             print("[Agent] Target network updated.")
 
@@ -378,7 +379,6 @@ if __name__ == "__main__":
     plot_cumulative_precision_recall_curve(pr_curves)
     plot_rewards(episodic_rewards, positive_ratios)
     for metric_name, metric_values in ids_metrics.items():
-        # Utilizzo di range(len(metric_values)) come episodi
-        plot_metric(metric_values, metric_name, list(range(len(metric_values))))
+        plot_metric(metric_values, metric_name, recorded_episodes)
     plot_traffic_distribution(env.benign, env.malicious)
     plot_agent_loss(agents_losses)
