@@ -3,9 +3,9 @@ import torch.optim as optim
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, \
     balanced_accuracy_score, matthews_corrcoef, roc_curve, auc, precision_recall_curve
 import numpy as np
-from environment import NetworkEnvironment
-from gnn_ids import SAGEIDS, preprocess_data, retrain_balanced
-from agent import DQNAgent
+from environment import *
+from gnn_ids import *
+from agent import *
 import networkx as nx
 from torch_geometric.utils import to_networkx
 import matplotlib.pyplot as plt
@@ -233,7 +233,7 @@ loss_fn = torch.nn.BCEWithLogitsLoss()
 env.gnn_model = gnn_model
 
 # Inizializza l'agente RL (modulo agent.py rimane invariato)
-agent = DQNAgent(state_size=state_size, action_size=action_size)
+agent = DDQNAgent(state_size=state_size, action_size=action_size)
 optimizerAgent = optim.Adam(agent.model.parameters(), lr=0.001)
 schedulerAgent = torch.optim.lr_scheduler.StepLR(optimizerAgent, step_size=4, gamma=1)
 
