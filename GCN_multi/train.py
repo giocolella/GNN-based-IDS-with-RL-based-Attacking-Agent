@@ -215,7 +215,7 @@ def plot_metric(metric_values, metric_name, episodes):
 if __name__ == "__main__":
     set_seed(16)
 
-    X_train, X_test, y_train, y_test = load_csv_data("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/pretrain_dataset.csv")
+    X_train, X_test, y_train, y_test = load_csv_data("C:/Users/colg/Desktop/mergedfiltered.csv")
     # Converto le etichette in binario per il pretraining dell'agente
     y_train = convert_to_binary(y_train)
     num_classes = len(np.unique(y_train))
@@ -235,21 +235,21 @@ if __name__ == "__main__":
 
     # Environment + DQNAgent
     env = NetworkEnvironment(gnn_model=gnn_model)
-    agent = DQNAgent(state_size=env.state_size, action_size=env.action_size)
+    agent = DDQNAgent(state_size=env.state_size, action_size=env.action_size)
 
     # Pretrain agente
     pretrain_agent(agent, X_train, y_train, epochs=2, batch_size=64)
 
     # Pretraining opzionale della GNN su un altro CSV
     try:
-        gnn_model.pretrain("/Users/mariacaterinadaloia/Documents/GitHub/GNN-based-IDS-with-RL-based-Attacking-Agent/mergedfilteredbig2.csv")
+        gnn_model.pretrain("C:/Users/colg/Desktop/cleaned_ids2018_sampledfiltered.csv")
         print("[GNN] Pretraining su mergedfilteredbig2 completato.")
     except FileNotFoundError:
         print("[GNN] CSV secondario non trovato, si procede senza pretraining aggiuntivo.")
 
-    num_episodes = 160
+    num_episodes = 1000
     batch_size = 64
-    retrain_interval = 20
+    retrain_interval = 50
     window_size = 10000
 
     optimizer_agent = optim.Adam(agent.model.parameters(), lr=agent.learning_rate)

@@ -25,52 +25,72 @@ class NetworkEnvironment:
         return self.current_state
 
     def step(self, action):
-        """
-        0 = benigno, 1 = malevolo
-        """
-        is_malicious = (action == 1)
+        is_malicious = action == 1  # 0: benign, 1: malicious
         traffic_features = self.generate_traffic(action)
+
+        # Append the new traffic instance and label
         self.traffic_data.append(traffic_features)
         self.labels.append(is_malicious)
 
-        # Valuta con la GNN
+        # Evaluate traffic with the GNN
         traffic_data_np = np.array(self.traffic_data, dtype=np.float32)
         x = torch.from_numpy(traffic_data_np)
         edge_index = self.get_edge_index()
-        with torch.no_grad():
-            self.gnn_model.eval()  # Eval mode per evitare problemi con BatchNorm
-            detection_probs = torch.sigmoid(self.gnn_model(x, edge_index))
-            self.gnn_model.train()
-        # Se l'output è vettoriale, prendiamo l'ultimo valore
-        detection_result = detection_probs[-1].item() if detection_probs.ndim == 1 else detection_probs[-1].mean().item()
+        # Use sigmoid to get a probability-like output from the IDS
+        detection_result = torch.sigmoid(self.gnn_model(x, edge_index))[-1]
 
-        # Calcola la distribuzione attuale del traffico
+        if detection_result.numel() == 1:
+            detection_result = detection_result.item()
+        else:
+            detection_result = detection_result.mean().item()
+
+        # Calculate current traffic distribution (benign vs malicious)
         benign_count = self.labels.count(0)
         malicious_count = self.labels.count(1)
         total_count = benign_count + malicious_count
         self.benign += benign_count
         self.malicious += malicious_count
 
-        threshold = 0.6
+        # Sliding window for imbalance calculation -----
+        window_size = 1000
+        recent_labels = self.labels[-min(len(self.labels), window_size):]
+        benign_count = recent_labels.count(0)
+        malicious_count = recent_labels.count(1)
+        total_count = benign_count + malicious_count
 
-        reward = 0.0
-        if is_malicious:
-            reward -= 2.0
-            if detection_result <= threshold:
-                reward += 4.0
-            else:
-                reward -= 2.0
+        if total_count > 0:
+            benign_ratio = benign_count / total_count
+            malicious_ratio = malicious_count / total_count
         else:
-            if detection_result > threshold:
-                reward -= 2.0
-            else:
-                reward += 4.0
+            benign_ratio = 0.5
+            malicious_ratio = 0.5
 
+        imbalance_factor = 1 - abs(benign_ratio - malicious_ratio)
+
+        benign_correct_reward = 15 * imbalance_factor
+        benign_incorrect_penalty = -10 * imbalance_factor  # increased penalty for false positives
+        malicious_correct_penalty = -20 * imbalance_factor  # increased penalty for detected malicious traffic
+        malicious_incorrect_reward = 25 * imbalance_factor
+
+        if is_malicious:
+            # For malicious traffic, if the IDS fails to flag it reward the agent but if flagged, penalize
+            if detection_result <= 0.5:
+                reward = malicious_incorrect_reward  # Reward for evading detection
+            else:
+                reward = malicious_correct_penalty  # Penalty for being detected
+        else:
+            if detection_result > 0.5:
+                reward = benign_incorrect_penalty  # Penalty for misclassifying benign traffic
+            else:
+                reward = benign_correct_reward  # Reward for correct classification
+
+        # Aggiorno contatori buoni e totali
         if reward > 0:
             self.good += 1
         self.totaltimes += 1
 
-        done = (len(self.traffic_data) > 5000)
+        # Terminate episode if too many traffic samples have been collected
+        done = len(self.traffic_data) > 5000
         next_state = np.random.rand(self.state_size)
         return next_state, reward, done, {}
 
