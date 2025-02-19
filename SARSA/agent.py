@@ -16,6 +16,7 @@ class SARSAAgent:
         self.epsilon_decay = 0.995  # Decay rate for epsilon
         self.learning_rate = 1e-2
         self.model = self.build_model()
+        self.target_model = self.build_model()
 
         # For adaptive reward scaling: initialize with no value and a decay factor
         self.reward_norm_factor = None  # Adaptive scaling factor
@@ -30,6 +31,10 @@ class SARSAAgent:
             nn.ReLU(),
             nn.Linear(64, self.action_size),
         )
+
+    def update_target_network(self):
+        """Updates the target network by copying weights from the current model."""
+        self.target_model.load_state_dict(self.model.state_dict())
 
     def remember(self, state, action, reward, next_state, next_action, done):
         """Stores the experience tuple in memory."""
@@ -60,27 +65,39 @@ class SARSAAgent:
                     self.reward_norm_decay * self.reward_norm_factor +
                     (1 - self.reward_norm_decay) * current_max)
 
+        # Sample a minibatch of transitions (including next_action for SARSA)
         minibatch = random.sample(self.memory, batch_size)
-        for state, action, reward, next_state, next_action, done in minibatch:
-            state = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
-            next_state = torch.tensor(next_state, dtype=torch.float32).unsqueeze(0)
+        states, actions, rewards, next_states, next_actions, dones = zip(*minibatch)
 
-            # Normalize reward with updated max_reward
-            normalized_reward = max(-5, min(5, reward / self.reward_norm_factor))
+        # Convert lists to tensors
+        states_tensor = torch.tensor(np.array(states), dtype=torch.float32)
+        next_states_tensor = torch.tensor(np.array(next_states), dtype=torch.float32)
+        actions_tensor = torch.tensor(actions, dtype=torch.int64).unsqueeze(1)
+        next_actions_tensor = torch.tensor(next_actions, dtype=torch.int64).unsqueeze(1)
+        rewards_tensor = torch.tensor(rewards, dtype=torch.float32).unsqueeze(1)
+        dones_tensor = torch.tensor(dones, dtype=torch.float32).unsqueeze(1)
 
-            target = normalized_reward
-            if not done:
-                next_q_value = self.model(next_state)[0][next_action].item()
-                target += self.gamma * next_q_value
+        # Normalize and clip rewards between -5 and 5
+        normalized_rewards = torch.clamp(rewards_tensor / self.reward_norm_factor, -5, 5)
 
-            target_f = self.model(state).detach().clone()
-            target_f[0][action] = target
+        # Compute Q-values for the current states and select the ones for the taken actions
+        current_q_values = self.model(states_tensor)
+        predicted_q = current_q_values.gather(1, actions_tensor)
 
-            optimizer.zero_grad()
-            output = self.model(state)
-            loss = loss_fn(output, target_f)
-            loss.backward()
-            optimizer.step()
+        # In SARSA, use the next action from memory (on-policy) for the update:
+        with torch.no_grad():
+            next_q_values = self.target_model(next_states_tensor).detach().gather(1, next_actions_tensor)
 
-        # Adjust epsilon decay
+        # Compute target Q-values: if done, no next Q-value is added
+        target_q = normalized_rewards + (1 - dones_tensor) * self.gamma * next_q_values
+
+        # Compute loss between the predicted Q-value for the taken action and the target
+        loss = loss_fn(predicted_q, target_q)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+
+        # Decay the exploration rate
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)

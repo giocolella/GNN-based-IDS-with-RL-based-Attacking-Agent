@@ -379,6 +379,7 @@ for episode in range(1, num_episodes + 1):
     # Retrain the IDS every retrain_interval episodes
     if episode % retrain_interval == 0:
         recorded_episodes.append(episode)
+        agent.update_target_network()
         print("Target network updated.")
         print("Retraining IDS...")
         gnn_checkpoint = gnn_model.state_dict().copy()
