@@ -49,7 +49,7 @@ class SARSAAgent:
         return np.argmax(q_values[0])
 
     def replay(self, batch_size, optimizer, scheduler, loss_fn):
-        """Updates the Q-function using the SARSA update rule with reward normalization."""
+        """Updates the Q-function using the agent update rule with reward normalization."""
         if len(self.memory) < batch_size:
             return
 
@@ -65,7 +65,7 @@ class SARSAAgent:
                     self.reward_norm_decay * self.reward_norm_factor +
                     (1 - self.reward_norm_decay) * current_max)
 
-        # Sample a minibatch of transitions (including next_action for SARSA)
+        # Sample a minibatch of transitions (including next_action for deep SARSA)
         minibatch = random.sample(self.memory, batch_size)
         states, actions, rewards, next_states, next_actions, dones = zip(*minibatch)
 
@@ -84,7 +84,7 @@ class SARSAAgent:
         current_q_values = self.model(states_tensor)
         predicted_q = current_q_values.gather(1, actions_tensor)
 
-        # In SARSA, use the next action from memory (on-policy) for the update:
+        # In deep SARSA, use the next action from memory (on-policy) for the update:
         with torch.no_grad():
             next_q_values = self.target_model(next_states_tensor).detach().gather(1, next_actions_tensor)
 
